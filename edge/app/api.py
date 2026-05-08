@@ -144,13 +144,19 @@ def list_cameras():
     return devices
 
 
-def _get_capture(camera_id):
+def _get_capture(camera_id, width=None, height=None):
     cv2.destroyAllWindows()
     cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
-    # Request MJPEG mode — camera sends compressed frames, way less USB bandwidth
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+    if not cap.isOpened():
+        return None
+    # Try MJPEG mode first, fall back to YUYV
+    if not cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG')):
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+    if width and height:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
     cap.set(cv2.CAP_PROP_FPS, 30)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     return cap
 
 
@@ -165,10 +171,9 @@ def _read_frame(cap):
 
 def _generate_mjpeg(camera_id, width=None, height=None):
     """Generator that yields MJPEG frames from camera_id."""
-    cap = _get_capture(camera_id)
-    if width and height:
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
+    cap = _get_capture(camera_id, width, height)
+    if cap is None:
+        return
     try:
         while True:
             frame = _read_frame(cap)
@@ -198,6 +203,8 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
 def detect_frame(camera_id: int = Form(0)):
     """Capture a single frame from camera, run detection, return annotated b64."""
     cap = _get_capture(camera_id)
+    if cap is None:
+        raise HTTPException(500, "failed to open camera")
     try:
         frame = _read_frame(cap)
         if frame is None:
@@ -274,6 +281,8 @@ async def auto_calibrate(camera_id: int = Form(0), image: UploadFile = File(None
     else:
         try:
             cap = _get_capture(camera_id)
+            if cap is None:
+                raise HTTPException(500, "failed to open camera")
             frame = _read_frame(cap)
             cap.release()
             if frame is None:
@@ -412,6 +421,8 @@ def test_capture():
     cam_id = int(cfg.get("camera_id", 0))
     try:
         cap = _get_capture(cam_id)
+        if cap is None:
+            raise HTTPException(500, "failed to open camera")
         frame = _read_frame(cap)
         cap.release()
         if frame is None:
