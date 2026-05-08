@@ -358,6 +358,8 @@ input[type="password"] { letter-spacing: .3em; }
   <button class="btn btn-cyan" onclick="saveConfig()">⤒ Save</button>
   <button class="btn btn-red" id="btn-detect-live" onclick="toggleDetect()">◎ Detect</button>
   <button class="btn btn-sm" onclick="testCapture()" style="color:var(--text-dim)">◉ One-shot</button>
+  <button class="btn btn-sm" id="btn-update" onclick="runUpdate()" style="color:var(--green);border-color:#1a4a2a">↻ Update</button>
+  <span style="font-size:.55rem;color:var(--text-dim)" id="version-display"></span>
   <span style="font-size:.55rem;color:var(--text-dim);margin-left:auto" id="fps-display"></span>
 </div>
 
@@ -1394,6 +1396,35 @@ async function testCapture() {
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
 
+// === Version & Update ===
+
+async function fetchVersion() {
+  try {
+    const v = await api('GET', '/api/version');
+    q('version-display').textContent = 'v' + v.version;
+  } catch(e) { /* ignore */ }
+}
+
+async function runUpdate() {
+  const btn = q('btn-update');
+  btn.disabled = true;
+  btn.textContent = '↻ ...';
+  try {
+    const r = await fetch(API + '/api/update', { method: 'POST' });
+    const result = await r.json();
+    if (result.status === 'ok') {
+      toast('[OK] ' + result.log, 'success');
+    } else {
+      toast('[FAIL] ' + result.log, 'error');
+      console.log(result.logs?.join('\n\n'));
+    }
+  } catch(e) {
+    toast('[FAIL] ' + e.message, 'error');
+  }
+  // reconnect after restart
+  setTimeout(() => { btn.disabled = false; btn.textContent = '↻ Update'; checkHealth(); fetchVersion(); }, 5000);
+}
+
 // === Init ===
 window.addEventListener('resize', () => { if (streamActive) updateCanvasSize(); });
 
@@ -1403,6 +1434,7 @@ q('feed-canvas').addEventListener('click', onCalCanvasClick);
 (async function init() {
   await checkHealth();
   await loadConfig();
+  fetchVersion();
   setTimeout(fetchPoints, 500);
   setTimeout(enumerateCameras, 600);
 })();

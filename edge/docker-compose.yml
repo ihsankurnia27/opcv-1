@@ -16,6 +16,9 @@ services:
       - ./app:/app/app
       - ./gauge_reader:/app/gauge_reader
       - ./config.json:/app/config.json
+      - ./version.txt:/app/version.txt:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /root/opcv-1:/repo:ro
     devices:
       - /dev/video0:/dev/video0
       - /dev/video1:/dev/video1

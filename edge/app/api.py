@@ -544,6 +544,65 @@ async def detect(
     }
 
 
+VERSION_PATH = "/app/version.txt"
+REPO_PATH = "/repo"
+COMPOSE_FILE = "/repo/edge/docker-compose.yml"
+
+
+@app.get("/api/version")
+def get_version():
+    """Return current version string from version.txt."""
+    version = "unknown"
+    if os.path.exists(VERSION_PATH):
+        with open(VERSION_PATH) as f:
+            version = f.read().strip()
+    return {"version": version, "update_available": False}
+
+
+@app.post("/api/update")
+async def run_update():
+    """Git pull + docker compose rebuild. Designed for Docker-socket access.
+
+    Requires:
+      - /var/run/docker.sock mounted into container
+      - /root/opcv-1 mounted at /repo
+
+    Returns build log. Container will restart after compose up -d.
+    """
+    import subprocess as sp
+    logs = []
+    def run(cmd, cwd=None):
+        try:
+            r = sp.run(cmd, capture_output=True, text=True, timeout=120, cwd=cwd)
+            out = (r.stdout + r.stderr).strip()
+            logs.append(f"$ {' '.join(cmd)}\n{out}")
+            return r.returncode == 0
+        except sp.TimeoutExpired:
+            logs.append(f"$ {' '.join(cmd)}\n[TIMEOUT]")
+            return False
+        except Exception as e:
+            logs.append(f"$ {' '.join(cmd)}\n[ERROR] {e}")
+            return False
+
+    if not os.path.exists(REPO_PATH):
+        return {"status": "error", "log": "REPO_PATH /repo not mounted", "logs": logs}
+    if not os.path.exists("/var/run/docker.sock"):
+        return {"status": "error", "log": "Docker socket not mounted", "logs": logs}
+
+    # Step 1: git fetch + reset — safe even on dirty tree
+    run(["git", "fetch", "origin"], cwd=REPO_PATH)
+    run(["git", "reset", "--hard", "origin/main"], cwd=REPO_PATH)
+
+    # Step 2: docker compose rebuild
+    ok = run(["docker-compose", "-f", COMPOSE_FILE, "up", "-d", "--build"])
+
+    return {
+        "status": "ok" if ok else "error",
+        "log": "Update complete, container restarting" if ok else "Build failed",
+        "logs": logs,
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
