@@ -5,22 +5,25 @@ Record & view operational logsheet data across 3 shifts. Analog gauge meter read
 ## Architecture
 
 ```
-┌─ Edge (Orange Pi) ───────────────────────┐
-│  Python FastAPI + OpenCV                 │
-│  Web UI :8765 — config point + params    │
-│  push_readings.py — periodic detect +    │
-│    POST to server API                    │
-│  gauge_reader/ — detection library       │
-└────────────────┬─────────────────────────┘
-                 │ HTTP (Tailscale / LAN)
+┌─ Edge (Orange Pi) ───────────────────────────┐
+│  :80 nginx     → redirect http→https         │
+│  :8765 FastAPI + OpenCV (HTTPS)              │
+│  Web UI — config point + params              │
+│  push_readings.py — periodic detect +        │
+│    POST to server API                        │
+│  gauge_reader/ — detection library           │
+│  Auto-update: cron git pull every 10min      │
+└────────────────┬─────────────────────────────┘
+                 │ WireGuard tunnel
+                 │ 10.8.0.4 ── 10.8.0.1
                  ▼
-┌─ Server ─────────────────────────────────┐
-│  PHP Apache :8082                        │
-│  MySQL :3310                             │
-│  api/receive_reading.php ← edge pushes   │
-│  testing.php — upload + edge readings    │
-│  all PHP/JS/CSS for dashboard + recap    │
-└──────────────────────────────────────────┘
+┌─ Server ─────────────────────────────────────┐
+│  PHP Apache :8082                            │
+│  MySQL :3310                                 │
+│  api/receive_reading.php ← edge pushes       │
+│  testing.php — upload + edge readings        │
+│  all PHP/JS/CSS for dashboard + recap        │
+└──────────────────────────────────────────────┘
 ```
 
 **Edge → Server only.** Edge is active: captures, detects, pushes. Server passively receives.
@@ -46,16 +49,17 @@ Web: http://localhost:8082
 
 ```bash
 cd edge
+cp config.json.example config.json   # edit secrets
 docker compose up -d
 ```
 
-Edge web UI: http://localhost:8765 — configure point, calibration, server URL.
+Edge web UI: http://edge-ip (auto-redirects to https://edge-ip:8765)
 
 ### 4. (Dev) Push a test reading
 
 ```bash
 cd edge
-pip install opencv-python fastapi uvicorn  # or run inside container
+pip install opencv-python fastapi uvicorn
 python push_readings.py --oneshot
 ```
 
@@ -74,14 +78,15 @@ python push_readings.py --oneshot
 - 3-shift data entry, per-role dashboards, date filtering, Excel export, Chart.js graphs
 
 **Gauge Meter Reader (Server)**
-- Manual upload → cURL to edge API → result with annotated image
+- Manual upload → proxy to edge API → result with annotated image
 - Edge Readings tab — latest pushes from Orange Pi
 - Per-account config persistence via JSON files
 
 **Gauge Meter Reader (Edge)**
-- Config web UI at `http://<edge-ip>:8765/`
+- Config web UI at `http://<edge-ip>`
 - Periodic scheduled captures with configurable interval
 - Local test-capture to verify calibration
+- HTTP→HTTPS auto-redirect via nginx
 - POSTs readings (value, angle, base64 annotated image) to server
 
 ## Gauge Detection Pipeline
@@ -114,21 +119,37 @@ python push_readings.py --oneshot
 │   ├── Dockerfile           # PHP Apache + curl + mysqli
 │   ├── api/receive_reading.php  # Edge push endpoint
 │   ├── testing.php          # Upload + edge readings tab
-│   ├── proses_testing.php   # Upload → edge API via cURL
+│   ├── proses_testing.php   # Upload → edge API via proxy
 │   ├── proxy_detect.php     # PHP→FastAPI proxy (env URL)
 │   └── ... all PHP/JS/CSS ...
 │
 ├── edge/                    # Edge device stack (Orange Pi)
-│   ├── docker-compose.yml   # api service, camera passthrough
+│   ├── docker-compose.yml   # api + redirect services
 │   ├── Dockerfile.edge      # Python 3.12 + OpenCV
-│   ├── config.json          # Point + calibration + schedule
-│   ├── app/
-│   │   ├── api.py           # FastAPI: detect, config, test-capture
-│   │   └── static/index.html  # Config web UI
-│   ├── gauge_reader/        # Detection library
-│   └── push_readings.py     # Scheduled pusher
+│   ├── config.json          # Per-point calibration (gitignored)
+│   ├── config.json.example  # Template with no secrets
+│   ├── push_readings.py     # Scheduled pusher
+│   ├── nginx/default.conf   # HTTP→HTTPS redirect
+│   ├── app/api.py           # FastAPI endpoints
+│   └── gauge_reader/        # Detection library
 │
-└── uvls/                    # Cleaned up (old monolith files)
+├── .gitignore
+├── edge/README.md           # Edge deployment docs
+└── server/README.md         # This file
+```
+
+## Git Workflow
+
+```bash
+# Main server — edit code, commit, push
+cd /home/ihsan/opcv-1
+git add -A
+git commit -m "what changed"
+git push
+
+# Edge device — auto-pulls every 10 min via cron
+# Or manual:
+ssh root@10.8.0.4 "cd /root/opcv-1 && git pull && cd /root/edge && docker compose up -d --build"
 ```
 
 ## Environment Variables
@@ -149,5 +170,7 @@ python push_readings.py --oneshot
 ## Notes
 
 - Auth uses plaintext passwords (as-shipped)
-- Edge compose maps `:8765` (not `:80`) — `docker compose run push_readings --oneshot` for test
-- Camera passthrough: uncomment `devices:` in `edge/docker-compose.yml` on Orange Pi
+- Edge web UI accessible on port 80 (auto-redirects to 8765 HTTPS)
+- Camera passthrough enabled by default in compose (requires `/dev/video0`)
+- `gitignore` excludes `config.json` (secrets) — always use `config.json.example` as template
+- WireGuard tunnel needs `PersistentKeepalive = 25` on edge config to prevent NAT drop

@@ -53,13 +53,25 @@ PersistentKeepalive = 25
 Access `http://<edge-ip>` (port 80) auto-redirects to `https://<edge-ip>:8765`.  
 The redirect container is `nginx:alpine`, no config needed beyond default.conf.
 
+## Git Setup
+
+```bash
+# Clone on edge device
+git clone https://github.com/ihsankurnia27/opcv-1.git /root/opcv-1
+ln -s /root/opcv-1/edge /root/edge
+cp /root/edge/config.json.example /root/edge/config.json
+# edit config.json with real secrets
+```
+
+`config.json` is gitignored — secrets never committed.
+
 ## Auto-Update (cron)
 
 ```bash
 crontab -e
 
 # Add: every 10 min, check for updates and rebuild
-*/10 * * * * cd /root/edge && git pull >> /var/log/edge-update.log 2>&1 && docker compose up -d --build >> /var/log/edge-update.log 2>&1
+*/10 * * * * cd /root/opcv-1 && git pull >> /var/log/edge-update.log 2>&1 && cd /root/edge && docker compose up -d --build >> /var/log/edge-update.log 2>&1
 ```
 
 ## Files
