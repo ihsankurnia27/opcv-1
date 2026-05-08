@@ -221,14 +221,14 @@ def detect_frame(camera_id: int = Form(0)):
     cy += int(cfg["center_offset_y"])
     angle_deg = find_needle_angle(
         frame, cx, cy, radius,
-        inner_ratio=cfg["inner_ratio"],
-        outer_ratio=cfg["outer_ratio"],
-        blur_kernel=cfg["blur_kernel"],
-        threshold_block=cfg["threshold_block"],
-        threshold_c=cfg["threshold_c"],
+        inner_ratio=float(cfg["inner_ratio"]),
+        outer_ratio=float(cfg["outer_ratio"]),
+        blur_kernel=int(cfg["blur_kernel"]),
+        threshold_block=int(cfg["threshold_block"]),
+        threshold_c=int(cfg["threshold_c"]),
     )
 
-    min_a, max_a = cfg["min_angle"], cfg["max_angle"]
+    min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = cfg["min_value"], cfg["max_value"]
     new_range = max_v - min_v
     if min_a <= max_a:
@@ -439,16 +439,16 @@ def test_capture():
     cy += int(cfg["center_offset_y"])
     angle_deg = find_needle_angle(
         frame, cx, cy, radius,
-        inner_ratio=cfg["inner_ratio"],
-        outer_ratio=cfg["outer_ratio"],
-        blur_kernel=cfg["blur_kernel"],
-        threshold_block=cfg["threshold_block"],
-        threshold_c=cfg["threshold_c"],
+        inner_ratio=float(cfg["inner_ratio"]),
+        outer_ratio=float(cfg["outer_ratio"]),
+        blur_kernel=int(cfg["blur_kernel"]),
+        threshold_block=int(cfg["threshold_block"]),
+        threshold_c=int(cfg["threshold_c"]),
     )
 
     # map angle -> value
-    min_a, max_a = cfg["min_angle"], cfg["max_angle"]
-    min_v, max_v = cfg["min_value"], cfg["max_value"]
+    min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
+    min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
     new_range = max_v - min_v
     if min_a <= max_a:
         old_range = max_a - min_a
