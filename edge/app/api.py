@@ -147,7 +147,10 @@ def list_cameras():
 def _get_capture(camera_id):
     cv2.destroyAllWindows()
     cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    # Request MJPEG mode — camera sends compressed frames, way less USB bandwidth
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
     return cap
 
 
@@ -171,7 +174,7 @@ def _generate_mjpeg(camera_id, width=None, height=None):
             frame = _read_frame(cap)
             if frame is None:
                 continue
-            _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
             yield (b"--frame\r\n"
                    b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
     except GeneratorExit:
