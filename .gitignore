@@ -4,3 +4,4 @@ __pycache__/
 .env
 config.json
 !edge/config.json.example
+README.local.md

@@ -6,23 +6,25 @@ Record & view operational logsheet data across 3 shifts. Analog gauge meter read
 
 ```
 ┌─ Edge (Orange Pi) ───────────────────────────┐
-│  :80 nginx     → redirect http→https         │
+│  :80 nginx (http→https redirect)             │
 │  :8765 FastAPI + OpenCV (HTTPS)              │
-│  Web UI — config point + params              │
-│  push_readings.py — periodic detect +        │
-│    POST to server API                        │
-│  gauge_reader/ — detection library           │
+│  USB camera on /dev/video1 (640x480)         │
+│  push_readings.py — periodic detect + POST   │
 │  Auto-update: cron git pull every 10min      │
 └────────────────┬─────────────────────────────┘
-                 │ WireGuard tunnel
-                 │ 10.8.0.4 ── 10.8.0.1
+                 │ WireGuard 10.8.0.0/24
+                 │ PersistentKeepalive = 25
                  ▼
-┌─ Server ─────────────────────────────────────┐
-│  PHP Apache :8082                            │
-│  MySQL :3310                                 │
-│  api/receive_reading.php ← edge pushes       │
-│  testing.php — upload + edge readings        │
-│  all PHP/JS/CSS for dashboard + recap        │
+┌─ App Server (10.8.0.3) ──────────────────────┐
+│  uvls-app :8082 (PHP Apache)                 │
+│  uvls-mysql :3310                            │
+│  WireGuard keepalive = 25                    │
+└────────────────┬─────────────────────────────┘
+                 │ LAN
+                 ▼
+┌─ Main Server (10.8.0.1) ─────────────────────┐
+│  wg-easy — WireGuard server                  │
+│  Git origin — development + push             │
 └──────────────────────────────────────────────┘
 ```
 
@@ -49,11 +51,13 @@ Web: http://localhost:8082
 
 ```bash
 cd edge
-cp config.json.example config.json   # edit secrets
+cp config.json.example config.json   # edit secrets (point, angles, server_api_url, api_key)
 docker compose up -d
 ```
 
 Edge web UI: http://edge-ip (auto-redirects to https://edge-ip:8765)
+
+**Camera**: USB camera is usually `/dev/video1` (not video0). Edit `config.json` → `"camera_id": 1`. Compose mounts `video0/1/2` by default.
 
 ### 4. (Dev) Push a test reading
 
@@ -171,6 +175,7 @@ ssh root@10.8.0.4 "cd /root/opcv-1 && git pull && cd /root/edge && docker compos
 
 - Auth uses plaintext passwords (as-shipped)
 - Edge web UI accessible on port 80 (auto-redirects to 8765 HTTPS)
-- Camera passthrough enabled by default in compose (requires `/dev/video0`)
+- Camera passthrough mounts `/dev/video0`, `/dev/video1`, `/dev/video2` — USB camera on Orange Pi is device 1
 - `gitignore` excludes `config.json` (secrets) — always use `config.json.example` as template
-- WireGuard tunnel needs `PersistentKeepalive = 25` on edge config to prevent NAT drop
+- WireGuard clients need `PersistentKeepalive = 25` to prevent NAT drop (set on both edge 10.8.0.4 and app server 10.8.0.3)
+- App server (10.8.0.3) needed Docker daemon DNS fix: `daemon.json: {"dns": ["1.1.1.1", "8.8.8.8"]}`

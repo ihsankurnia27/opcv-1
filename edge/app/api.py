@@ -594,7 +594,7 @@ async def run_update():
     run(["git", "reset", "--hard", "origin/main"], cwd=REPO_PATH)
 
     # Step 2: docker compose rebuild
-    ok = run(["docker-compose", "-f", COMPOSE_FILE, "up", "-d", "--build"])
+    ok = run(["docker", "compose", "-f", COMPOSE_FILE, "up", "-d", "--build"])
 
     return {
         "status": "ok" if ok else "error",

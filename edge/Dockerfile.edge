@@ -4,9 +4,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev openssl curl git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install docker-compose standalone v2 (for self-update via socket)
-RUN curl -fsSL "https://github.com/docker/compose/releases/download/v2.32.2/docker-compose-$(uname -s)-$(uname -m)" \
-    -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose
+# Install Docker CLI + compose plugin (for self-update via socket)
+RUN apt-get install -y --no-install-recommends docker.io docker-compose-plugin && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
