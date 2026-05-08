@@ -18,7 +18,7 @@ services:
       - ./config.json:/app/config.json
       - ./version.txt:/app/version.txt:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /root/opcv-1:/repo:ro
+      - /root/opcv-1:/repo
     devices:
       - /dev/video0:/dev/video0
       - /dev/video1:/dev/video1

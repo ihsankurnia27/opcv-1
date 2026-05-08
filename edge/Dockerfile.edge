@@ -4,8 +4,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev openssl curl git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Docker CLI + compose plugin (for self-update via socket)
-RUN apt-get install -y --no-install-recommends docker.io docker-compose-plugin && rm -rf /var/lib/apt/lists/*
+# Install Docker CLI binary + compose plugin (for self-update via socket)
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/$(uname -m)/docker-27.5.1.tgz" | \
+    tar -xz -C /usr/local/bin --strip-components=1 docker/docker && \
+    mkdir -p /usr/local/lib/docker/cli-plugins && \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v2.32.2/docker-compose-linux-$(uname -m)" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 WORKDIR /app
 
