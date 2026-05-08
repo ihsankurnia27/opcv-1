@@ -12,6 +12,5 @@
   "threshold_c": "5",
   "interval_seconds": "3600",
   "camera_id": 0,
-  "cam_width": 640,
-  "cam_height": 480
+  "cam_resolution": "0x0"
 }

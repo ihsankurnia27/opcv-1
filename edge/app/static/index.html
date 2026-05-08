@@ -208,8 +208,8 @@ input[type="password"] { letter-spacing: .3em; }
   position: relative;
   background: #05080c;
   min-height: 360px;
-  max-height: 540px;
   overflow: hidden;
+  transition: aspect-ratio .3s;
 }
 .feed-body img, .feed-body video {
   display: block;
@@ -398,9 +398,17 @@ input[type="password"] { letter-spacing: .3em; }
         <div class="field-group">
           <label>Resolution</label>
           <div style="display:flex;gap:6px">
-            <select id="cam_width" style="flex:1"><option value="640">640</option><option value="800">800</option><option value="1280">1280</option></select>
-            <span style="color:var(--text-dim);line-height:28px">×</span>
-            <select id="cam_height" style="flex:1"><option value="480">480</option><option value="600">600</option><option value="720">720</option></select>
+            <select id="cam_resolution" style="flex:1">
+              <option value="0x0">Auto (native)</option>
+              <option value="640x480">640 × 480</option>
+              <option value="800x600">800 × 600</option>
+              <option value="1024x768">1024 × 768</option>
+              <option value="1280x720">1280 × 720</option>
+              <option value="1280x960">1280 × 960</option>
+              <option value="1920x1080">1920 × 1080</option>
+              <option value="2592x1944">2592 × 1944</option>
+            </select>
+            <span style="color:var(--text-dim);line-height:28px;white-space:nowrap" id="native-res-label"></span>
           </div>
         </div>
       </div>
@@ -571,7 +579,8 @@ async function enumerateCameras() {
       list.forEach(c => {
         const o = document.createElement('option');
         o.value = c.id;
-        o.textContent = c.label + (c.width > 0 ? ` [${c.width}×${c.height}]` : '');
+        const native = (c.max_width > 0) ? ` [max ${c.max_width}×${c.max_height}]` : '';
+        o.textContent = c.label + (c.width > 0 ? ` [${c.width}×${c.height}]` : '') + native;
         sel.appendChild(o);
       });
     }
@@ -580,7 +589,20 @@ async function enumerateCameras() {
     if (saved && [...sel.options].some(o => o.value === saved)) {
       sel.value = saved;
     }
+    // show native resolution label
+    updateNativeResLabel(list);
   } catch(e) { toast('[FAIL] Camera scan: ' + e.message, 'error'); }
+}
+
+function updateNativeResLabel(list) {
+  const sel = q('camera_id');
+  const cam = list.find(c => String(c.id) === sel.value);
+  const label = q('native-res-label');
+  if (cam && cam.max_width > 0) {
+    label.textContent = 'native: ' + cam.max_width + '×' + cam.max_height;
+  } else {
+    label.textContent = '';
+  }
 }
 
 // === Camera mode ===
@@ -621,18 +643,26 @@ function stopStream() {
   if (cameraMode === 'edge') {
     q('feed-stream').src = '';
   }
+  q('feed-body').style.aspectRatio = '';
 }
 
 function startEdgeStream() {
   const camId = q('camera_id').value;
-  const w = q('cam_width').value;
-  const h = q('cam_height').value;
+  const res = q('cam_resolution').value.split('x').map(Number);
+  const w = res[0] || 0;
+  const h = res[1] || 0;
   const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h;
   const img = q('feed-stream');
   q('feed-placeholder').style.display = 'none';
   q('feed-video').style.display = 'none';
   img.style.display = 'block';
   img.src = url;
+  // match container aspect ratio to actual feed once loaded
+  img.onload = () => {
+    if (img.naturalWidth && img.naturalHeight) {
+      q('feed-body').style.aspectRatio = img.naturalWidth + '/' + img.naturalHeight;
+    }
+  };
   streamActive = true;
   q('btn-stream').textContent = '■ Stop';
   q('btn-stream').className = 'btn btn-sm btn-red';
@@ -661,6 +691,13 @@ async function startClientStream() {
     const video = q('feed-video');
     video.srcObject = clientStream;
     await video.play();
+    // match aspect ratio from actual video track
+    video.onloadedmetadata = () => {
+      const track = video.videoWidth && video.videoHeight;
+      if (track) {
+        q('feed-body').style.aspectRatio = video.videoWidth + '/' + video.videoHeight;
+      }
+    };
     q('feed-placeholder').style.display = 'none';
     q('feed-stream').style.display = 'none';
     video.style.display = 'block';
@@ -684,6 +721,15 @@ async function startClientStream() {
 function updateCanvasSize() {
   const body = q('feed-body');
   const canvas = q('feed-canvas');
+  canvas.width = body.clientWidth;
+  canvas.height = body.clientHeight;
+}
+
+// Called when media element loads with actual dimensions
+function updateCanvasToMedia(w, h) {
+  const body = q('feed-body');
+  const canvas = q('feed-canvas');
+  body.style.aspectRatio = w + '/' + h;
   canvas.width = body.clientWidth;
   canvas.height = body.clientHeight;
 }
@@ -944,7 +990,7 @@ function updateDetectState() {
 
 // === Config ===
 function getFormValues() {
-  const fields = ['point','server_api_url','api_key','camera_id','cam_width','cam_height',
+  const fields = ['point','server_api_url','api_key','camera_id','cam_resolution',
     'min_value','max_value','min_angle','max_angle','center_offset_y','inner_ratio','outer_ratio',
     'blur_kernel','threshold_block','threshold_c','interval_seconds'];
   const vals = {};
@@ -958,6 +1004,20 @@ async function loadConfig() {
     for (const k of Object.keys(c)) {
       const el = q(k);
       if (el && el.tagName !== 'SELECT') el.value = c[k];
+    }
+    // migrate old cam_width/cam_height → cam_resolution
+    const resEl = q('cam_resolution');
+    if (resEl && c.cam_width && c.cam_height) {
+      const legacy = c.cam_width + 'x' + c.cam_height;
+      if ([...resEl.options].some(o => o.value === legacy)) {
+        resEl.value = legacy;
+      } else {
+        // custom res — add option
+        const opt = document.createElement('option');
+        opt.value = legacy; opt.textContent = c.cam_width + ' × ' + c.cam_height;
+        resEl.appendChild(opt);
+        resEl.value = legacy;
+      }
     }
     // Point select
     const sel = q('point');

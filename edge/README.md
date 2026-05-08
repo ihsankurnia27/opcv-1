@@ -25,11 +25,11 @@ docker compose up -d
 
 ## WireGuard (remote edge)
 
-Edge device connects to server via WireGuard tunnel.
+Edge device connects to server via WireGuard tunnel. All peers need `PersistentKeepalive = 25`.
 
 ```
-Orange Pi ── WG tunnel ── Server
-10.8.0.4                  10.8.0.1
+Orange Pi ── WG ── App Server ── Main Server
+10.8.0.4        10.8.0.3        10.8.0.1 (wg-easy)
 ```
 
 **Client config** (`/etc/wireguard/opiz3-edge-1.conf`):
@@ -42,11 +42,11 @@ PrivateKey = <key>
 [Peer]
 PublicKey = <server-key>
 Endpoint = wg-01.example.com:55555
-AllowedIPs = 10.8.0.0/24
+AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25
 ```
 
-`PersistentKeepalive = 25` keeps NAT hole open. Without it, tunnel drops after ~2 minutes of idle traffic.
+`PersistentKeepalive = 25` keeps NAT hole open. Without it, tunnel drops after ~2 minutes of idle traffic. Must be set on **every** peer (edge + app server).
 
 ## HTTP→HTTPS Redirect
 
@@ -64,6 +64,8 @@ cp /root/edge/config.json.example /root/edge/config.json
 ```
 
 `config.json` is gitignored — secrets never committed.
+
+**Camera**: USB camera on Orange Pi is `/dev/video1` (video0 = SoC hw encoder). Set `"camera_id": 1` in config.json. Compose mounts all three video devices.
 
 ## Auto-Update (cron)
 

@@ -57,8 +57,7 @@ def load_config():
             defaults.update(json.load(f))
     # ensure camera defaults
     defaults.setdefault("camera_id", 0)
-    defaults.setdefault("cam_width", 640)
-    defaults.setdefault("cam_height", 480)
+    defaults.setdefault("cam_resolution", "0x0")
     return defaults
 
 
@@ -72,6 +71,22 @@ def save_config(cfg):
 # Global lock for camera access to avoid conflicts
 _camera_lock = threading.Lock()
 _camera_streams = {}  # camera_id -> cv2.VideoCapture
+
+def _probe_native_resolution(camera_id):
+    """Open camera, set ultra-high res, read clamped max from driver."""
+    try:
+        cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
+        if not cap.isOpened():
+            return 640, 480
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 10000)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 10000)
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+        return w, h
+    except Exception:
+        return 640, 480
+
 
 def _enumerate_cameras(max_check=8):
     """List available video device paths and open-able indices."""
@@ -87,9 +102,11 @@ def _enumerate_cameras(max_check=8):
             w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap.release()
+            mw, mh = _probe_native_resolution(idx)
             label = f"Video {idx}"
             devices.append({"id": idx, "path": path, "label": label,
-                            "width": w, "height": h})
+                            "width": w, "height": h,
+                            "max_width": mw, "max_height": mh})
     # also probe plain indices 0..max_check not found above
     found_ids = {d["id"] for d in devices}
     for idx in range(max_check):
@@ -104,8 +121,10 @@ def _enumerate_cameras(max_check=8):
             w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap.release()
+            mw, mh = _probe_native_resolution(idx)
             devices.append({"id": idx, "path": path, "label": f"Video {idx}",
-                            "width": w, "height": h})
+                            "width": w, "height": h,
+                            "max_width": mw, "max_height": mh})
     return devices
 
 
@@ -117,9 +136,11 @@ def list_cameras():
         # fallback: include the configured default
         cfg = load_config()
         cam_id = int(cfg.get("camera_id", 0))
+        mw, mh = _probe_native_resolution(cam_id)
         devices.append({"id": cam_id, "path": f"/dev/video{cam_id}",
                         "label": f"Video {cam_id}",
-                        "width": 0, "height": 0})
+                        "width": 0, "height": 0,
+                        "max_width": mw, "max_height": mh})
     return devices
 
 
@@ -160,8 +181,10 @@ def _generate_mjpeg(camera_id, width=None, height=None):
 
 
 @app.get("/api/stream")
-def stream_video(camera_id: int = Query(0), w: int = Query(640), h: int = Query(480)):
-    """MJPEG stream from a camera."""
+def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)):
+    """MJPEG stream from a camera. w=0/h=0 → auto-detect native resolution."""
+    if w <= 0 or h <= 0:
+        w, h = _probe_native_resolution(camera_id)
     return StreamingResponse(
         _generate_mjpeg(camera_id, w, h),
         media_type="multipart/x-mixed-replace; boundary=frame",
@@ -340,7 +363,7 @@ def get_config():
 def update_config(body: dict):
     cfg = load_config()
     allowed = {
-        "point", "camera_id", "cam_width", "cam_height",
+        "point", "camera_id", "cam_resolution",
         "min_value", "max_value", "min_angle", "max_angle",
         "center_offset_y", "inner_ratio", "outer_ratio",
         "blur_kernel", "threshold_block", "threshold_c",
