@@ -1,0 +1,39 @@
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.edge
+    container_name: uvls-edge
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      SERVER_API_URL: ${SERVER_API_URL:-http://uvls-app/api/receive_reading.php}
+      EDGE_API_KEY: ${EDGE_API_KEY:-changeme}
+      CONFIG_PATH: /app/config.json
+    volumes:
+      - ./app:/app/app
+      - ./gauge_reader:/app/gauge_reader
+      - ./config.json:/app/config.json
+    devices:
+      - /dev/video0:/dev/video0
+    networks:
+      - uvls-net
+
+  redirect:
+    image: nginx:alpine
+    container_name: uvls-edge-redirect
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+    networks:
+      - uvls-net
+
+networks:
+  uvls-net:
+    external: true

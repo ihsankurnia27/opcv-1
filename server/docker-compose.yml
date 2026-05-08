@@ -1,0 +1,51 @@
+services:
+
+  db:
+    image: mysql:8.0
+    container_name: uvls-mysql
+    restart: unless-stopped
+    ports:
+      - "3310:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: uvls123
+      MYSQL_DATABASE: ua1-1
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./fbd_storage.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-puvls123"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - uvls-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uvls-app
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/var/www/html
+      - ./custom-php.ini:/usr/local/etc/php/conf.d/custom-php.ini
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASS: uvls123
+      DB_NAME: ua1-1
+      GAUGE_API_URL: ${GAUGE_API_URL:-http://edge:8765/detect}
+    networks:
+      - uvls-net
+
+volumes:
+  mysql_data:
+
+networks:
+  uvls-net:
+    external: true

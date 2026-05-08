@@ -1,0 +1,17 @@
+{
+  "point": "PG-1043",
+  "min_value": "0",
+  "max_value": "10",
+  "min_angle": "135",
+  "max_angle": "45",
+  "center_offset_y": "0",
+  "inner_ratio": "0.3",
+  "outer_ratio": "0.8",
+  "blur_kernel": "5",
+  "threshold_block": "15",
+  "threshold_c": "5",
+  "interval_seconds": "3600",
+  "camera_id": 0,
+  "cam_width": 640,
+  "cam_height": 480
+}

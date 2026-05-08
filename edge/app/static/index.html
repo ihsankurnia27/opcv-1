@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EDGE GAUGE TERMINAL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e14;
+  --bg-panel: #0f1419;
+  --bg-panel-alt: #141b24;
+  --border: #1e2a36;
+  --border-light: #2a3a48;
+  --amber: #f0b429;
+  --amber-dim: #8a6a1a;
+  --cyan: #06b6d4;
+  --cyan-dim: #0a5a6a;
+  --green: #22c55e;
+  --green-glow: rgba(34,197,94,.3);
+  --red: #ef4444;
+  --red-glow: rgba(239,68,68,.3);
+  --text: #c8d6e0;
+  --text-dim: #5a6a78;
+  --text-bright: #e8f0f8;
+  --font: 'DM Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; }
+html { font-size: 16px; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 16px;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background: radial-gradient(ellipse at 30% 20%, rgba(240,180,41,.03) 0%, transparent 50%),
+              radial-gradient(ellipse at 70% 80%, rgba(6,182,212,.025) 0%, transparent 50%);
+  pointer-events: none; z-index: 0;
+}
+
+/* HEADER */
+.term-header {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-bottom: 2px solid var(--amber-dim);
+  margin-bottom: 16px;
+  animation: fadeSlideDown .4s ease-out;
+  border-radius: 6px;
+}
+.term-header-left { display: flex; align-items: center; gap: 14px; }
+.term-led {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--amber-dim); flex-shrink: 0;
+  transition: background .3s, box-shadow .3s;
+}
+.term-led.on { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+.term-led.off { background: var(--red); box-shadow: 0 0 8px var(--red-glow); }
+.term-title { font-size: 1.05rem; font-weight: 700; color: var(--text-bright); letter-spacing: .08em; text-transform: uppercase; }
+.term-title span { color: var(--amber); }
+.term-tag { font-size: .65rem; color: var(--text-dim); letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; }
+.term-badge { font-size: .7rem; color: var(--cyan); letter-spacing: .06em; }
+
+/* BUTTONS */
+.btn {
+  font-family: var(--font); font-size: .7rem; font-weight: 500;
+  letter-spacing: .06em; text-transform: uppercase;
+  padding: 7px 16px;
+  border: 1px solid var(--border); background: var(--bg-panel);
+  color: var(--text); cursor: pointer; transition: all .15s;
+  position: relative; border-radius: 5px; white-space: nowrap;
+}
+.btn:hover { border-color: var(--amber-dim); color: var(--text-bright); background: var(--bg-panel-alt); }
+.btn:active { transform: scale(.97); }
+.btn-amber { border-color: var(--amber-dim); color: var(--amber); }
+.btn-amber:hover { border-color: var(--amber); background: rgba(240,180,41,.08); box-shadow: 0 0 16px rgba(240,180,41,.12); }
+.btn-cyan { border-color: var(--cyan-dim); color: var(--cyan); }
+.btn-cyan:hover { border-color: var(--cyan); background: rgba(6,182,212,.08); box-shadow: 0 0 16px rgba(6,182,212,.12); }
+.btn-red { border-color: #5a2020; color: var(--red); }
+.btn-red:hover { border-color: var(--red); background: rgba(239,68,68,.08); box-shadow: 0 0 16px rgba(239,68,68,.12); }
+.btn-green { border-color: #1a4a2a; color: var(--green); }
+.btn-green:hover { border-color: var(--green); background: rgba(34,197,94,.08); box-shadow: 0 0 16px rgba(34,197,94,.12); }
+.btn-sm { padding: 5px 10px; font-size: .65rem; }
+.btn-icon { padding: 7px 10px; font-size: .8rem; }
+.btn.active { background: rgba(240,180,41,.12); border-color: var(--amber-dim); color: var(--amber); }
+
+/* TOOLBAR */
+.toolbar {
+  position: relative; z-index: 1;
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 16px; align-items: center;
+  animation: fadeSlideDown .4s ease-out .1s both;
+}
+
+/* LAYOUT: config left, feed right */
+.main-grid {
+  position: relative; z-index: 1;
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .main-grid { grid-template-columns: 1fr; }
+}
+
+.config-col {
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.feed-col {
+  min-width: 0;
+}
+
+/* PANELS */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--border-light);
+  padding: 14px 16px;
+  position: relative;
+  border-radius: 6px;
+}
+.panel-title {
+  font-size: .6rem; font-weight: 700; letter-spacing: .15em;
+  text-transform: uppercase; color: var(--amber);
+  margin-bottom: 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-title::before { content: '❖'; font-size: .55rem; color: var(--amber-dim); }
+.panel-title .sub { color: var(--text-dim); font-weight: 400; margin-left: auto; font-size: .55rem; letter-spacing: .1em; }
+
+/* Fields */
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+.field-row:last-child { margin-bottom: 0; }
+.field-row.three { grid-template-columns: 1fr 1fr 1fr; }
+.field-row.single { grid-template-columns: 1fr; }
+@media (max-width: 500px) { .field-row, .field-row.three { grid-template-columns: 1fr; } }
+.field-row.cam-sel { grid-template-columns: 1fr auto; }
+
+.field-group { min-width: 0; }
+.field-group label {
+  display: block; font-size: .6rem; font-weight: 500;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 3px;
+}
+.field-group .help { font-size: .55rem; color: var(--text-dim); margin-top: 2px; opacity: .6; }
+
+input, select {
+  font-family: var(--font); width: 100%;
+  padding: 6px 9px; background: var(--bg);
+  border: 1px solid var(--border); color: var(--text-bright);
+  font-size: .75rem; outline: none; transition: border-color .15s;
+  border-radius: 5px; -webkit-appearance: none; appearance: none;
+}
+input:focus, select:focus { border-color: var(--amber-dim); box-shadow: 0 0 0 1px var(--amber-dim); }
+input[type=number] { font-family: var(--font); }
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6H0z' fill='%235a6a78'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+  padding-right: 28px;
+}
+select option { background: var(--bg-panel-alt); color: var(--text); }
+input[type="password"] { letter-spacing: .3em; }
+
+.point-row { display: flex; gap: 6px; align-items: start; }
+.point-row select { flex: 1; }
+
+/* LIVE FEED PANEL */
+.feed-panel {
+  padding: 0;
+  overflow: hidden;
+}
+.feed-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+.feed-tabs { display: flex; gap: 4px; }
+.feed-tab {
+  font-family: var(--font); font-size: .6rem; font-weight: 500;
+  letter-spacing: .08em; text-transform: uppercase;
+  padding: 5px 12px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text-dim);
+  cursor: pointer; transition: all .15s;
+  border-radius: 4px;
+}
+.feed-tab:hover { border-color: var(--border-light); color: var(--text); }
+.feed-tab.active { background: var(--bg-panel-alt); border-color: var(--amber-dim); color: var(--amber); }
+.feed-ctrl { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+.feed-body {
+  position: relative;
+  background: #05080c;
+  min-height: 360px;
+  max-height: 540px;
+  overflow: hidden;
+}
+.feed-body img, .feed-body video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.feed-body canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Detection HUD overlay */
+.feed-hud {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: rgba(10,14,20,.85);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  min-width: 130px;
+  font-size: .65rem;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+.hud-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 3px; }
+.hud-row:last-child { margin-bottom: 0; }
+.hud-label { color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.hud-value { color: var(--text-bright); font-weight: 500; text-align: right; }
+.hud-value.amber { color: var(--amber); }
+.hud-value.cyan { color: var(--cyan); }
+.hud-value.green { color: var(--green); }
+.hud-divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+/* No-signal overlay */
+.feed-placeholder {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: .75rem; gap: 8px;
+}
+.feed-placeholder .icon { font-size: 2rem; opacity: .3; }
+.feed-placeholder .sub { font-size: .6rem; opacity: .5; }
+
+/* Auto-detect checkbox */
+.auto-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .6rem; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: .06em;
+  cursor: pointer;
+}
+.auto-toggle input[type=checkbox] {
+  width: auto; accent-color: var(--amber);
+}
+
+/* RESULT CARD */
+#result-card {
+  display: none;
+  margin-top: 12px;
+  animation: fadeSlideUp .35s ease-out;
+}
+.result-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 700px) { .result-layout { grid-template-columns: 1fr; } }
+#result-img { width: 100%; max-height: 280px; object-fit: contain; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+#result-data {
+  font-family: var(--font); font-size: .7rem; white-space: pre;
+  background: var(--bg); border: 1px solid var(--border);
+  padding: 10px; color: var(--cyan); overflow-x: auto; min-height: 60px;
+  border-radius: 4px;
+}
+
+.feed-body.cal-mode canvas {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+.cal-instruct {
+  position: absolute;
+  bottom: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(10,14,20,.88);
+  border: 1px solid var(--amber-dim);
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: .7rem;
+  color: var(--amber);
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+}
+.cal-actions {
+  position: absolute;
+  top: 8px; left: 8px;
+  display: none;
+  gap: 6px;
+  z-index: 10;
+}
+.cal-actions.show { display: flex; }
+
+/* TOAST */
+.toast {
+  position: fixed; bottom: 16px; right: 16px;
+  padding: 10px 18px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  color: var(--text); font-family: var(--font); font-size: .7rem;
+  letter-spacing: .04em; display: none; z-index: 99999;
+  animation: toastIn .2s ease-out; max-width: 360px; border-radius: 5px;
+}
+.toast.show { display: block; }
+.toast.toast-success { border-color: var(--green); box-shadow: 0 0 20px rgba(34,197,94,.1); }
+.toast.toast-error { border-color: var(--red); box-shadow: 0 0 20px rgba(239,68,68,.1); }
+
+/* ANIMATIONS */
+@keyframes fadeSlideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeSlideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulseGlow { 0%, 100% { box-shadow: 0 0 6px var(--green-glow); } 50% { box-shadow: 0 0 14px var(--green-glow); } }
+.term-led.on { animation: pulseGlow 2s ease-in-out infinite; }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+</style>
+</head>
+<body>
+
+<header class="term-header">
+  <div class="term-header-left">
+    <div class="term-led" id="term-led"></div>
+    <div class="term-title">Edge <span>Gauge</span> Terminal</div>
+    <div class="term-tag">v3.0 · Live Feed</div>
+  </div>
+  <div class="term-badge" id="health-badge">▼ CHECKING</div>
+</header>
+
+<div class="toolbar">
+  <button class="btn btn-amber" onclick="loadConfig()">⟳ Load</button>
+  <button class="btn btn-cyan" onclick="saveConfig()">⤒ Save</button>
+  <button class="btn btn-red" id="btn-detect-live" onclick="toggleDetect()">◎ Detect</button>
+  <button class="btn btn-sm" onclick="testCapture()" style="color:var(--text-dim)">◉ One-shot</button>
+  <span style="font-size:.55rem;color:var(--text-dim);margin-left:auto" id="fps-display"></span>
+</div>
+
+<div class="main-grid">
+
+  <!-- COL 1: CONFIG -->
+  <div class="config-col">
+
+    <div class="panel">
+      <div class="panel-title">Connection <span class="sub">POINT / SERVER</span></div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Point ID</label>
+          <div class="point-row">
+            <select id="point"></select>
+            <button class="btn btn-icon btn-sm" onclick="fetchPoints()" title="Fetch points">↻</button>
+          </div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Server API URL</label><input id="server_api_url" value="http://uvls-app/api/receive_reading.php"></div>
+        <div class="field-group"><label>API Key</label><input id="api_key" type="password" value="changeme"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Camera <span class="sub">SOURCE</span></div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Device</label>
+          <select id="camera_id"></select>
+        </div>
+        <div class="field-group" style="display:flex;align-items:end;gap:4px">
+          <button class="btn btn-sm" onclick="enumerateCameras()" style="flex:1">Scan</button>
+        </div>
+      </div>
+      <div class="field-row single">
+        <div class="field-group">
+          <label>Resolution</label>
+          <div style="display:flex;gap:6px">
+            <select id="cam_width" style="flex:1"><option value="640">640</option><option value="800">800</option><option value="1280">1280</option></select>
+            <span style="color:var(--text-dim);line-height:28px">×</span>
+            <select id="cam_height" style="flex:1"><option value="480">480</option><option value="600">600</option><option value="720">720</option></select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Calibration <span class="sub">VALUE ⇄ ANGLE</span></div>
+      <div class="field-row">
+        <div class="field-group"><label>Min Value</label><input id="min_value" type="number" step="any" value="0"></div>
+        <div class="field-group"><label>Max Value</label><input id="max_value" type="number" step="any" value="10"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Min Angle (°)</label><input id="min_angle" type="number" min="0" max="360" value="45"></div>
+        <div class="field-group"><label>Max Angle (°)</label><input id="max_angle" type="number" min="0" max="360" value="315"></div>
+      </div>
+      <div class="field-row">
+        <button class="btn btn-sm btn-cyan" id="btn-auto-cal" onclick="autoCalibrate()">⟲ Auto-Cal</button>
+        <button class="btn btn-sm" id="btn-manual-cal" onclick="manualCalibrate()">⟐ Manual Cal</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Detection <span class="sub">OPENCV</span></div>
+      <div class="field-row three">
+        <div class="field-group"><label>Y Offset</label><input id="center_offset_y" type="number" value="0"><div class="help">px, + = down</div></div>
+        <div class="field-group"><label>Inner Ratio</label><input id="inner_ratio" type="number" step="0.05" min="0.1" max="0.9" value="0.60"></div>
+        <div class="field-group"><label>Outer Ratio</label><input id="outer_ratio" type="number" step="0.05" min="0.2" max="1" value="0.80"></div>
+      </div>
+      <div class="field-row three">
+        <div class="field-group"><label>Blur Kernel</label><input id="blur_kernel" type="number" step="2" min="1" max="31" value="5"></div>
+        <div class="field-group"><label>Threshold Block</label><input id="threshold_block" type="number" step="2" min="0" max="99" value="0"></div>
+        <div class="field-group"><label>Threshold C</label><input id="threshold_c" type="number" min="0" max="20" value="5"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Schedule <span class="sub">INTERVAL</span></div>
+      <div class="field-row single">
+        <div class="field-group"><label>Interval (seconds)</label><input id="interval_seconds" type="number" min="60" value="3600"><div class="help">3600s = 1 hour</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- COL 2: LIVE FEED -->
+  <div class="feed-col">
+
+    <div class="panel feed-panel">
+      <div class="feed-header">
+        <div class="feed-tabs">
+          <button class="feed-tab active" data-mode="edge" onclick="setCameraMode('edge')">Edge Cam</button>
+          <button class="feed-tab" data-mode="client" onclick="setCameraMode('client')">Client Cam</button>
+        </div>
+        <div class="feed-ctrl">
+          <button class="btn btn-sm btn-green" id="btn-stream" onclick="toggleStream()">▶ Start</button>
+        </div>
+      </div>
+
+      <div class="feed-body" id="feed-body">
+        <!-- Edge camera: MJPEG stream -->
+        <img id="feed-stream" style="display:none">
+        <!-- Client camera: getUserMedia -->
+        <video id="feed-video" style="display:none" playsinline muted></video>
+        <!-- Overlay canvas for detection graphics -->
+        <canvas id="feed-canvas"></canvas>
+        <!-- Calibration actions -->
+        <div class="cal-actions" id="cal-actions">
+          <button class="btn btn-sm btn-green" onclick="applyCalibration()">✓ Apply</button>
+          <button class="btn btn-sm btn-red" onclick="cancelCalibration()">✗ Cancel</button>
+        </div>
+        <div class="cal-instruct" id="cal-instruct" style="display:none"></div>
+        <!-- HUD -->
+        <div class="feed-hud" id="feed-hud">
+          <div class="hud-row"><span class="hud-label">Value</span><span class="hud-value amber" id="hud-value">--</span></div>
+          <div class="hud-row"><span class="hud-label">Angle</span><span class="hud-value cyan" id="hud-angle">--</span></div>
+          <div class="hud-row"><span class="hud-label">Center</span><span class="hud-value" id="hud-center">--</span></div>
+          <hr class="hud-divider">
+          <div class="hud-row"><span class="hud-label">Status</span><span class="hud-value green" id="hud-status">Idle</span></div>
+        </div>
+        <!-- Placeholder when no feed -->
+        <div class="feed-placeholder" id="feed-placeholder">
+          <div class="icon">◉</div>
+          <div>No Camera Feed</div>
+          <div class="sub">Select source and press Start</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result panel -->
+    <div id="result-card">
+      <div class="panel">
+        <div class="panel-title">Detection Result <span class="sub" id="result-summary"></span></div>
+        <div class="result-layout">
+          <img id="result-img">
+          <pre id="result-data"></pre>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const API = '';
+let cameraMode = 'edge';
+let streamActive = false;
+let detectEnabled = false;
+let detectLoopId = null;
+let clientStream = null;
+// Manual calibration state
+let calState = 'idle'; // idle | awaiting-min | awaiting-max | done
+let calMinAngle = 0;
+let calMaxAngle = 0;
+let calCenter = null;
+let calImageW = 640;
+let calImageH = 480;
+let calSnapshotResult = null;
+let calImageBlob = null;
+
+function q(id) { return document.getElementById(id); }
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(API + path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function toast(msg, type) {
+  const el = q('toast');
+  el.textContent = msg; el.className = 'toast toast-' + type + ' show';
+  setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// === Health ===
+async function checkHealth() {
+  try {
+    const h = await api('GET', '/health');
+    if (h.status === 'ok') {
+      q('term-led').className = 'term-led on';
+      q('health-badge').textContent = '▲ ONLINE';
+      q('health-badge').style.color = 'var(--green)';
+    }
+  } catch(e) {
+    q('term-led').className = 'term-led off';
+    q('health-badge').textContent = '▼ OFFLINE';
+    q('health-badge').style.color = 'var(--red)';
+  }
+}
+
+// === Camera enumeration ===
+async function enumerateCameras() {
+  try {
+    const list = await api('GET', '/api/cameras');
+    const sel = q('camera_id');
+    sel.innerHTML = '';
+    if (!list.length) {
+      const o = document.createElement('option');
+      o.value = '0'; o.textContent = 'Video 0 (default)';
+      sel.appendChild(o);
+    } else {
+      list.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = c.label + (c.width > 0 ? ` [${c.width}×${c.height}]` : '');
+        sel.appendChild(o);
+      });
+    }
+    // restore saved value
+    const saved = sel.dataset.saved;
+    if (saved && [...sel.options].some(o => o.value === saved)) {
+      sel.value = saved;
+    }
+  } catch(e) { toast('[FAIL] Camera scan: ' + e.message, 'error'); }
+}
+
+// === Camera mode ===
+function setCameraMode(mode) {
+  if (streamActive) toggleStream();
+  cameraMode = mode;
+  document.querySelectorAll('.feed-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  hideResult();
+}
+
+// === Stream control ===
+async function toggleStream() {
+  if (streamActive) {
+    stopStream();
+    return;
+  }
+  if (cameraMode === 'edge') {
+    startEdgeStream();
+  } else {
+    startClientStream();
+  }
+}
+
+function stopStream() {
+  if (detectEnabled) toggleDetect();
+  streamActive = false;
+  q('feed-stream').style.display = 'none';
+  q('feed-video').style.display = 'none';
+  q('feed-placeholder').style.display = 'flex';
+  q('btn-stream').textContent = '▶ Start';
+  q('btn-stream').className = 'btn btn-sm btn-green';
+  clearCanvas();
+
+  if (cameraMode === 'client' && clientStream) {
+    clientStream.getTracks().forEach(t => t.stop());
+    clientStream = null;
+  }
+  if (cameraMode === 'edge') {
+    q('feed-stream').src = '';
+  }
+}
+
+function startEdgeStream() {
+  const camId = q('camera_id').value;
+  const w = q('cam_width').value;
+  const h = q('cam_height').value;
+  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h;
+  const img = q('feed-stream');
+  q('feed-placeholder').style.display = 'none';
+  q('feed-video').style.display = 'none';
+  img.style.display = 'block';
+  img.src = url;
+  streamActive = true;
+  q('btn-stream').textContent = '■ Stop';
+  q('btn-stream').className = 'btn btn-sm btn-red';
+  if (detectEnabled) { stopDetectLoop(); startDetectLoop(); }
+}
+
+async function startClientStream() {
+  try {
+    const constraints = {
+      video: { width: 640, height: 480, facingMode: { ideal: 'environment' } },
+      audio: false,
+    };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (navigator.getUserMedia || navigator.webkitGetUserMedia) {
+        const gum = navigator.getUserMedia || navigator.webkitGetUserMedia;
+        const stream = await new Promise((resolve, reject) => {
+          gum.call(navigator, constraints, resolve, reject);
+        });
+        clientStream = stream;
+      } else {
+        throw new Error('getUserMedia not available in this browser');
+      }
+    } else {
+      clientStream = await navigator.mediaDevices.getUserMedia(constraints);
+    }
+    const video = q('feed-video');
+    video.srcObject = clientStream;
+    await video.play();
+    q('feed-placeholder').style.display = 'none';
+    q('feed-stream').style.display = 'none';
+    video.style.display = 'block';
+    streamActive = true;
+    q('btn-stream').textContent = '■ Stop';
+    q('btn-stream').className = 'btn btn-sm btn-red';
+    updateCanvasSize();
+    updateDetectState();
+  } catch(e) {
+    if (e.name === 'NotAllowedError') {
+      toast('[FAIL] Camera permission denied', 'error');
+    } else if (e.name === 'NotFoundError') {
+      toast('[FAIL] No camera found on this device', 'error');
+    } else {
+      toast('[FAIL] Client cam: ' + e.message, 'error');
+    }
+  }
+}
+
+// === Canvas sizing ===
+function updateCanvasSize() {
+  const body = q('feed-body');
+  const canvas = q('feed-canvas');
+  canvas.width = body.clientWidth;
+  canvas.height = body.clientHeight;
+}
+
+function clearCanvas() {
+  const canvas = q('feed-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function resetHUD() {
+  q('hud-value').textContent = '--';
+  q('hud-angle').textContent = '--';
+  q('hud-center').textContent = '--';
+  q('hud-status').textContent = 'Idle';
+  q('hud-value').className = 'hud-value';
+}
+
+// === Detection (live) ===
+async function detectLive() {
+  if (!streamActive) { toast('[WARN] Start stream first', 'error'); return; }
+
+  const btn = q('btn-detect-live');
+  btn.disabled = true;
+  btn.textContent = '◎ ...';
+
+  try {
+    let result;
+    if (cameraMode === 'edge') {
+      const camId = q('camera_id').value;
+      const form = new FormData();
+      form.append('camera_id', camId);
+      const r = await fetch(API + '/api/detect-frame', { method: 'POST', body: form });
+      if (!r.ok) throw new Error(await r.text());
+      result = await r.json();
+    } else {
+      // Client camera: capture frame from video
+      const video = q('feed-video');
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth || 640;
+      c.height = video.videoHeight || 480;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      const blob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
+      const form = new FormData();
+      form.append('image', blob, 'frame.jpg');
+      form.append('min_angle', q('min_angle').value);
+      form.append('max_angle', q('max_angle').value);
+      form.append('min_value', q('min_value').value);
+      form.append('max_value', q('max_value').value);
+      form.append('center_offset_y', q('center_offset_y').value);
+      form.append('inner_ratio', q('inner_ratio').value);
+      form.append('outer_ratio', q('outer_ratio').value);
+      form.append('blur_kernel', q('blur_kernel').value);
+      form.append('threshold_block', q('threshold_block').value);
+      form.append('threshold_c', q('threshold_c').value);
+      form.append('need_annotation', 'true');
+      const r = await fetch(API + '/detect', { method: 'POST', body: form });
+      if (!r.ok) throw new Error(await r.text());
+      result = await r.json();
+    }
+
+    if (result.error) { toast('[FAIL] ' + result.error, 'error'); return; }
+
+    // Update HUD
+    q('hud-value').textContent = result.value;
+    q('hud-value').className = 'hud-value amber';
+    q('hud-angle').textContent = result.angle + '°';
+    q('hud-angle').className = 'hud-value cyan';
+    const ctr = result.center || {};
+    q('hud-center').textContent = ctr.x !== undefined ? ctr.x + ',' + ctr.y : '--';
+    q('hud-status').textContent = 'Detected';
+    q('hud-status').className = 'hud-value green';
+
+    // Draw overlay on canvas
+    drawOverlay(result);
+
+    // Show result panel
+    showResult(result);
+
+  } catch(e) {
+    toast('[FAIL] ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '◎ Detect';
+  }
+}
+
+// === Overlay drawing ===
+function drawOverlay(result) {
+  const canvas = q('feed-canvas');
+  const body = q('feed-body');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.width = body.clientWidth;
+  canvas.height = body.clientHeight;
+
+  const ctr = result.center;
+  if (!ctr || ctr.x === undefined) return;
+
+  // Get media element and its actual rendered size
+  const img = q('feed-stream');
+  const video = q('feed-video');
+  const media = img.style.display !== 'none' ? img : video;
+  let mediaW, mediaH;
+  if (media.tagName === 'VIDEO') {
+    mediaW = media.videoWidth || 640;
+    mediaH = media.videoHeight || 480;
+  } else {
+    // Use detection result dimensions from server
+    mediaW = result.w || 640;
+    mediaH = result.h || 480;
+  }
+  // image displayed in the feed-body with object-fit:contain
+  // compute the actual rendered rect
+  const contW = body.clientWidth;
+  const contH = body.clientHeight;
+  const imgAspect = mediaW / mediaH;
+  const contAspect = contW / contH;
+  let renderW, renderH, offX, offY;
+  if (imgAspect > contAspect) {
+    // image wider than container — letterbox top/bottom
+    renderW = contW;
+    renderH = contW / imgAspect;
+    offX = 0;
+    offY = (contH - renderH) / 2;
+  } else {
+    // image taller than container — letterbox left/right
+    renderH = contH;
+    renderW = contH * imgAspect;
+    offX = (contW - renderW) / 2;
+    offY = 0;
+  }
+  const scaleX = renderW / mediaW;
+  const scaleY = renderH / mediaH;
+
+  const cx = offX + ctr.x * scaleX;
+  const cy = offY + ctr.y * scaleY;
+  const r = (ctr.radius || 100) * Math.min(scaleX, scaleY);
+  const rNeedle = r * 0.85;  // match Python draw_needle
+  const rRef = r * 0.7;  // match Python draw_needle ref lines
+
+  // Inner sampling circle
+  const cfg = getFormValues();
+  const innerRatio = parseFloat(cfg.inner_ratio) || 0.6;
+  const outerRatio = parseFloat(cfg.outer_ratio) || 0.8;
+  const rInner = r * innerRatio;
+  const rOuter = r * outerRatio;
+  ctx.beginPath();
+  ctx.arc(cx, cy, rInner, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(240,180,41,.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(240,180,41,.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Gauge outer circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(240,180,41,.25)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#f0b429';
+  ctx.fill();
+
+  // Angle needle — OpenCV coords: 0°=right, 90°=down (y-down canvas same)
+  const angleRad = result.angle * Math.PI / 180;
+  const nx = cx + rNeedle * Math.cos(angleRad);
+  const ny = cy + rNeedle * Math.sin(angleRad);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Min/Max ref lines
+  const minA = parseFloat(cfg.min_angle) || 0;
+  const maxA = parseFloat(cfg.max_angle) || 0;
+  for (const a of [minA, maxA]) {
+    const aRad = a * Math.PI / 180;
+    const x2 = cx + rRef * Math.cos(aRad);
+    const y2 = cy + rRef * Math.sin(aRad);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = 'rgba(6,182,212,.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+// === Result panel ===
+function showResult(r) {
+  const card = q('result-card');
+  card.style.display = 'block';
+  q('result-img').src = 'data:image/jpeg;base64,' + r.annotated_image;
+  q('result-img').style.display = 'block';
+  q('result-data').textContent = JSON.stringify({value: r.value, angle: r.angle, center: r.center}, null, 2);
+  q('result-data').style.display = 'block';
+  q('result-summary').textContent = r.value + ' @ ' + r.angle + '°';
+}
+
+function hideResult() {
+  q('result-card').style.display = 'none';
+  clearCanvas();
+  resetHUD();
+}
+
+// === Detect toggle ===
+function toggleDetect() {
+  detectEnabled = !detectEnabled;
+  const btn = q('btn-detect-live');
+  if (detectEnabled) {
+    btn.textContent = '■ Detect';
+    btn.className = 'btn btn-cyan';
+    if (streamActive) startDetectLoop();
+    else toast('[WARN] Start stream first', 'error');
+  } else {
+    stopDetectLoop();
+    btn.textContent = '◎ Detect';
+    btn.className = 'btn btn-red';
+    q('hud-status').textContent = 'Idle';
+    q('hud-status').className = 'hud-value';
+  }
+}
+
+function startDetectLoop() {
+  stopDetectLoop();
+  q('hud-status').textContent = 'Active';
+  q('hud-status').className = 'hud-value cyan';
+  detectLive();
+  detectLoopId = setInterval(detectLive, 2000);
+}
+
+function stopDetectLoop() {
+  if (detectLoopId) {
+    clearInterval(detectLoopId);
+    detectLoopId = null;
+  }
+}
+
+function updateDetectState() {
+  if (detectEnabled && streamActive) startDetectLoop();
+}
+
+// === Config ===
+function getFormValues() {
+  const fields = ['point','server_api_url','api_key','camera_id','cam_width','cam_height',
+    'min_value','max_value','min_angle','max_angle','center_offset_y','inner_ratio','outer_ratio',
+    'blur_kernel','threshold_block','threshold_c','interval_seconds'];
+  const vals = {};
+  fields.forEach(k => { const el = q(k); if (el) vals[k] = el.value; });
+  return vals;
+}
+
+async function loadConfig() {
+  try {
+    const c = await api('GET', '/api/config');
+    for (const k of Object.keys(c)) {
+      const el = q(k);
+      if (el && el.tagName !== 'SELECT') el.value = c[k];
+    }
+    // Point select
+    const sel = q('point');
+    if (sel && c.point) {
+      if (![...sel.options].some(o => o.value === c.point)) {
+        const opt = document.createElement('option');
+        opt.value = c.point; opt.textContent = c.point;
+        sel.appendChild(opt);
+      }
+      sel.value = c.point;
+    }
+    // Camera select: store saved for later enumeration
+    const camSel = q('camera_id');
+    if (camSel && c.camera_id !== undefined) {
+      camSel.dataset.saved = c.camera_id;
+      // try now (may already be populated)
+      if ([...camSel.options].some(o => o.value === String(c.camera_id))) {
+        camSel.value = String(c.camera_id);
+      }
+    }
+    toast('[OK] Config loaded');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+}
+
+async function fetchPoints() {
+  try {
+    const r = await api('GET', '/api/points');
+    if (!Array.isArray(r)) throw new Error('invalid response');
+    const sel = q('point');
+    const cur = sel.value;
+    sel.innerHTML = '';
+    r.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.point;
+      opt.textContent = p.point + ' | ' + (p.area||'') + ' | ' + (p.procces||'') + ' | ' + (p.item||'');
+      if (p.min !== undefined && p.max !== undefined) {
+        opt.dataset.min = p.min;
+        opt.dataset.max = p.max;
+      }
+      sel.appendChild(opt);
+    });
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+    // auto-fill min/max value from selected point
+    fillPointValues();
+    toast('[OK] ' + r.length + ' points');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+}
+
+function fillPointValues() {
+  const sel = q('point');
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && opt.dataset.min !== undefined) {
+    q('min_value').value = opt.dataset.min;
+    q('max_value').value = opt.dataset.max;
+  }
+}
+
+async function autoCalibrate() {
+  const btn = q('btn-auto-cal');
+  btn.disabled = true;
+  btn.textContent = '⟲ ...';
+  const form = new FormData();
+  try {
+    if (cameraMode === 'client') {
+      // Capture frame from client video
+      const video = q('feed-video');
+      if (!video || !video.videoWidth) throw new Error('No client video frame');
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      const blob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
+      form.append('image', blob, 'frame.jpg');
+    } else {
+      form.append('camera_id', q('camera_id').value);
+    }
+    const r = await fetch(API + '/api/auto-calibrate', { method: 'POST', body: form });
+    if (!r.ok) throw new Error(await r.text());
+    const result = await r.json();
+    if (result.error) { toast('[FAIL] ' + result.error, 'error'); btn.disabled = false; btn.textContent = '⟲ Auto-Cal'; return; }
+    q('min_angle').value = result.min_angle;
+    q('max_angle').value = result.max_angle;
+    toast('[OK] Angles: ' + result.min_angle + '° / ' + result.max_angle + '°');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+  btn.disabled = false;
+  btn.textContent = '⟲ Auto-Cal';
+}
+
+async function manualCalibrate() {
+  const btn = q('btn-manual-cal');
+  btn.disabled = true;
+  btn.textContent = '⟐ ...';
+  try {
+    let result;
+    let captureBlob = null;
+    if (cameraMode === 'client') {
+      const video = q('feed-video');
+      if (!video || !video.videoWidth) throw new Error('No client video frame');
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      captureBlob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
+      const form = new FormData();
+      form.append('image', captureBlob, 'frame.jpg');
+      ['min_angle','max_angle','min_value','max_value','center_offset_y',
+       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+        form.append(id, q(id).value));
+      form.append('need_annotation', 'true');
+      const r = await fetch(API + '/detect', { method: 'POST', body: form });
+      if (!r.ok) throw new Error(await r.text());
+      result = await r.json();
+    } else {
+      // Edge cam: capture frame from MJPEG img element
+      const img = q('feed-stream');
+      if (!img || !img.complete || !img.naturalWidth) throw new Error('No edge stream frame');
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      captureBlob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
+      const form = new FormData();
+      form.append('image', captureBlob, 'frame.jpg');
+      ['min_angle','max_angle','min_value','max_value','center_offset_y',
+       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+        form.append(id, q(id).value));
+      form.append('need_annotation', 'true');
+      const r = await fetch(API + '/detect', { method: 'POST', body: form });
+      if (!r.ok) throw new Error(await r.text());
+      result = await r.json();
+    }
+
+    if (result.error) { toast('[FAIL] ' + result.error, 'error'); btn.disabled = false; btn.textContent = '⟐ Manual Cal'; return; }
+
+    const ctr = result.center;
+    if (!ctr || ctr.x === undefined) { toast('[FAIL] No gauge center detected', 'error'); btn.disabled = false; btn.textContent = '⟐ Manual Cal'; return; }
+
+    calCenter = ctr;
+    calImageW = result.w || 640;
+    calImageH = result.h || 480;
+    calImageBlob = captureBlob;
+    calMinAngle = null;
+    calMaxAngle = null;
+
+    // Stop stream, show snapshot
+    if (detectEnabled) toggleDetect();
+    streamActive = false;
+    if (cameraMode === 'client' && clientStream) {
+      clientStream.getTracks().forEach(t => t.stop());
+      clientStream = null;
+    }
+    q('feed-video').style.display = 'none';
+    q('feed-stream').style.display = 'none';
+    q('btn-stream').textContent = '▶ Start';
+    q('btn-stream').className = 'btn btn-sm btn-green';
+
+    // Show annotated image
+    q('feed-stream').src = 'data:image/jpeg;base64,' + result.annotated_image;
+    q('feed-stream').style.display = 'block';
+    q('feed-placeholder').style.display = 'none';
+
+    // Setup canvas
+    const body = q('feed-body');
+    const canvas = q('feed-canvas');
+    canvas.width = body.clientWidth;
+    canvas.height = body.clientHeight;
+
+    // Enable cal mode
+    q('feed-body').classList.add('cal-mode');
+    calState = 'awaiting-min';
+    q('cal-instruct').textContent = 'ⓘ Tap to mark MIN angle start';
+    q('cal-instruct').style.display = 'block';
+    q('cal-actions').classList.remove('show');
+
+    toast('[OK] Tap the gauge to mark min angle');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+
+  btn.disabled = false;
+  btn.textContent = '⟐ Manual Cal';
+}
+
+function onCalCanvasClick(e) {
+  if (calState !== 'awaiting-min' && calState !== 'awaiting-max') return;
+  if (!calCenter) return;
+
+  const rect = q('feed-canvas').getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+
+  const lb = getLetterbox();
+  const imgX = (cx - lb.offX) / lb.scaleX;
+  const imgY = (cy - lb.offY) / lb.scaleY;
+
+  const dx = imgX - calCenter.x;
+  const dy = imgY - calCenter.y;
+  if (Math.hypot(dx, dy) < 10) { toast('[WARN] Tap too close to center', 'error'); return; }
+
+  let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  if (angle < 0) angle += 360;
+
+  if (calState === 'awaiting-min') {
+    calMinAngle = angle;
+    calState = 'awaiting-max';
+    q('cal-instruct').textContent = 'ⓘ Tap to mark MAX angle end';
+    drawCalMarkers();
+  } else if (calState === 'awaiting-max') {
+    if (calMinAngle !== null && Math.abs(angle - calMinAngle) < 3) { toast('[WARN] Choose different position', 'error'); return; }
+    calMaxAngle = angle;
+    calState = 'done';
+    q('cal-instruct').textContent = '✓ MIN ' + calMinAngle.toFixed(1) + '° · MAX ' + calMaxAngle.toFixed(1) + '°';
+    q('cal-actions').classList.add('show');
+    drawCalMarkers();
+  }
+}
+
+function drawCalMarkers() {
+  const canvas = q('feed-canvas');
+  const body = q('feed-body');
+  canvas.width = body.clientWidth;
+  canvas.height = body.clientHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!calCenter) return;
+
+  const lb = getLetterbox();
+  const ctrX = lb.offX + calCenter.x * lb.scaleX;
+  const ctrY = lb.offY + calCenter.y * lb.scaleY;
+  const maxLine = Math.min(canvas.width, canvas.height) * 0.38;
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(ctrX, ctrY, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#f0b429';
+  ctx.fill();
+
+  function drawMarker(angle, color, label) {
+    const aRad = angle * Math.PI / 180;
+    const ex = ctrX + maxLine * Math.cos(aRad);
+    const ey = ctrY + maxLine * Math.sin(aRad);
+    ctx.beginPath();
+    ctx.moveTo(ctrX, ctrY);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(ex, ey, 6, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.font = '11px DM Mono, monospace';
+    ctx.fillText(label + ' ' + angle.toFixed(1) + '°', ex + 8, ey + 4);
+  }
+
+  if (calMinAngle !== null) drawMarker(calMinAngle, '#22c55e', 'MIN');
+  if (calMaxAngle !== null) drawMarker(calMaxAngle, '#06b6d4', 'MAX');
+}
+
+function getLetterbox() {
+  const body = q('feed-body');
+  const contW = body.clientWidth;
+  const contH = body.clientHeight;
+  const imgAspect = calImageW / calImageH;
+  const contAspect = contW / contH;
+  let renderW, renderH;
+  if (imgAspect > contAspect) {
+    renderW = contW;
+    renderH = contW / imgAspect;
+  } else {
+    renderH = contH;
+    renderW = contH * imgAspect;
+  }
+  return {
+    offX: (contW - renderW) / 2,
+    offY: (contH - renderH) / 2,
+    scaleX: renderW / calImageW,
+    scaleY: renderH / calImageH
+  };
+}
+
+function cancelCalibration() {
+  calState = 'idle';
+  calMinAngle = null;
+  calMaxAngle = null;
+  calCenter = null;
+  calImageBlob = null;
+  q('feed-body').classList.remove('cal-mode');
+  q('cal-instruct').style.display = 'none';
+  q('cal-actions').classList.remove('show');
+  clearCanvas();
+  if (!streamActive) {
+    q('feed-stream').style.display = 'none';
+    q('feed-placeholder').style.display = 'flex';
+  }
+}
+
+async function applyCalibration() {
+  if (calMinAngle === null || calMaxAngle === null) return;
+  q('min_angle').value = calMinAngle.toFixed(1);
+  q('max_angle').value = calMaxAngle.toFixed(1);
+  toast('[OK] Angles set: ' + calMinAngle.toFixed(1) + '° / ' + calMaxAngle.toFixed(1) + '°');
+
+  // Learn optimal params for auto-cal
+  if (calImageBlob && calCenter) {
+    try {
+      const form = new FormData();
+      form.append('image', calImageBlob, 'frame.jpg');
+      form.append('center_x', calCenter.x);
+      form.append('center_y', calCenter.y);
+      form.append('radius', calCenter.radius || 100);
+      form.append('min_angle', calMinAngle);
+      form.append('max_angle', calMaxAngle);
+      form.append('point', q('point').value);
+      const r = await fetch(API + '/api/learn-calibration', { method: 'POST', body: form });
+      if (!r.ok) throw new Error(await r.text());
+      const result = await r.json();
+      if (result.learned) {
+        toast('[OK] Learned params: ratio=' + result.params.variance_ratio);
+      }
+    } catch(e) {
+      toast('[WARN] Learning failed: ' + e.message, 'error');
+    }
+  }
+  cancelCalibration();
+}
+
+async function saveConfig() {
+  const body = getFormValues();
+  try {
+    await api('POST', '/api/config', body);
+    toast('[OK] Config written');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+}
+
+async function testCapture() {
+  try {
+    if (cameraMode === 'client') {
+      // Capture from client video, send to /detect endpoint
+      const video = q('feed-video');
+      if (!video || !video.videoWidth) { toast('[FAIL] No client video frame available', 'error'); return; }
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      const blob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
+      const form = new FormData();
+      form.append('image', blob, 'frame.jpg');
+      ['min_angle','max_angle','min_value','max_value','center_offset_y',
+       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+        form.append(id, q(id).value));
+      form.append('need_annotation', 'true');
+      const r = await fetch(API + '/detect', { method: 'POST', body: form });
+      if (!r.ok) throw new Error(await r.text());
+      const result = await r.json();
+      if (result.error) { toast('[FAIL] ' + result.error, 'error'); return; }
+      showResult(result);
+      toast('[OK] Read: ' + result.value + ' at ' + result.angle + '°');
+      return;
+    }
+    // Edge cam: existing behavior
+    const card = q('result-card');
+    card.style.display = 'none';
+    q('result-summary').textContent = '';
+    const r = await api('POST', '/api/test-capture');
+    if (r.error) { toast('[FAIL] ' + r.error, 'error'); return; }
+    showResult(r);
+    toast('[OK] Read: ' + r.value + ' at ' + r.angle + '°');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+}
+
+// === Init ===
+window.addEventListener('resize', () => { if (streamActive) updateCanvasSize(); });
+
+q('point').addEventListener('change', fillPointValues);
+q('feed-canvas').addEventListener('click', onCalCanvasClick);
+
+(async function init() {
+  await checkHealth();
+  await loadConfig();
+  setTimeout(fetchPoints, 500);
+  setTimeout(enumerateCameras, 600);
+})();
+</script>
+</body>
+</html>

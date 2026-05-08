@@ -1,0 +1,22 @@
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 libsm6 libxext6 libxrender-dev openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Generate self-signed cert for HTTPS (needed for getUserMedia)
+RUN openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    -keyout /app/key.pem -out /app/cert.pem \
+    -subj "/O=edge-gauge/CN=edge-gauge"
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app/ app/
+COPY gauge_reader/ gauge_reader/
+COPY push_readings.py .
+
+EXPOSE 8765
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8765", "--ssl-keyfile", "/app/key.pem", "--ssl-certfile", "/app/cert.pem"]
