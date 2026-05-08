@@ -229,7 +229,7 @@ def detect_frame(camera_id: int = Form(0)):
     )
 
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
-    min_v, max_v = cfg["min_value"], cfg["max_value"]
+    min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
     new_range = max_v - min_v
     if min_a <= max_a:
         old_range = max_a - min_a
