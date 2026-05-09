@@ -500,7 +500,6 @@ const API = '';
 let cameraMode = 'edge';
 let streamActive = false;
 let detectEnabled = false;
-let detectPollId = null;
 let clientStream = null;
 let calState = 'idle';
 let calMinAngle = 0;
@@ -607,7 +606,7 @@ async function toggleStream() {
 
 function stopStream() {
   if (detectEnabled) {
-    stopDetectPoll();
+    stopDetectLoop();
     detectEnabled = false;
     q('btn-detect').textContent = 'Detect';
     q('btn-detect').className = 'btn btn-sm';
@@ -649,7 +648,7 @@ function startEdgeStream() {
   streamActive = true;
   q('btn-stream').textContent = 'Stop';
   q('btn-stream').className = 'btn btn-sm btn-red';
-  if (detectEnabled) startDetectPoll();
+  if (detectEnabled) startDetectLoop();
 }
 
 async function startClientStream() {
@@ -684,7 +683,7 @@ async function startClientStream() {
     q('btn-stream').textContent = 'Stop';
     q('btn-stream').className = 'btn btn-sm btn-red';
     updateCanvasSize();
-    if (detectEnabled) startDetectPoll();
+    if (detectEnabled) startDetectLoop();
   } catch(e) {
     if (e.name === 'NotAllowedError') {
       toast('[FAIL] Camera permission denied', 'error');
@@ -727,9 +726,9 @@ function toggleDetect() {
     btn.className = 'btn btn-sm btn-cyan';
     q('hud-status').textContent = 'Active';
     q('hud-status').className = 'hud-value cyan';
-    startDetectPoll();
+    startDetectLoop();
   } else {
-    stopDetectPoll();
+    stopDetectLoop();
     btn.textContent = 'Detect';
     btn.className = 'btn btn-sm';
     q('hud-status').textContent = 'Idle';
@@ -738,33 +737,33 @@ function toggleDetect() {
   }
 }
 
-function startDetectPoll() {
-  stopDetectPoll();
-  pollOneShot();
-  detectPollId = setInterval(pollOneShot, 2000);
+function startDetectLoop() {
+  stopDetectLoop();
+  detectEnabled = true;
+  loopOneShot();
 }
 
-function stopDetectPoll() {
-  if (detectPollId) {
-    clearInterval(detectPollId);
-    detectPollId = null;
-  }
+function stopDetectLoop() {
+  detectEnabled = false;
 }
 
-async function pollOneShot() {
+async function loopOneShot() {
+  if (!detectEnabled) return;
   try {
     const r = await api('POST', '/api/one-shot');
-    if (r.error) return;
-    q('hud-value').textContent = r.value;
-    q('hud-value').className = 'hud-value amber';
-    q('hud-angle').textContent = r.angle + ' deg';
-    q('hud-angle').className = 'hud-value cyan';
-    const ctr = r.center || {};
-    q('hud-center').textContent = ctr.x !== undefined ? ctr.x + ',' + ctr.y : '--';
-    q('hud-status').textContent = 'Detected';
-    q('hud-status').className = 'hud-value green';
-    drawOverlay(r);
-  } catch(e) { /* ignore poll errors */ }
+    if (!r.error) {
+      q('hud-value').textContent = r.value;
+      q('hud-value').className = 'hud-value amber';
+      q('hud-angle').textContent = r.angle + ' deg';
+      q('hud-angle').className = 'hud-value cyan';
+      const ctr = r.center || {};
+      q('hud-center').textContent = ctr.x !== undefined ? ctr.x + ',' + ctr.y : '--';
+      q('hud-status').textContent = 'Detected';
+      q('hud-status').className = 'hud-value green';
+      drawOverlay(r);
+    }
+  } catch(e) { /* ignore */ }
+  if (detectEnabled) setTimeout(loopOneShot, 100);
 }
 
 // === Overlay drawing ===
@@ -1090,7 +1089,7 @@ async function manualCalibrate() {
     calMinAngle = null;
     calMaxAngle = null;
 
-    if (detectEnabled) toggleDetect();
+    if (detectEnabled) stopDetectLoop();
     streamActive = false;
     if (cameraMode === 'client' && clientStream) {
       clientStream.getTracks().forEach(t => t.stop());
