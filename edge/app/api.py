@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -68,9 +69,10 @@ def save_config(cfg):
 
 # --- Camera helpers ---
 
-# Global lock for camera access to avoid conflicts
-_camera_lock = threading.Lock()
-_camera_streams = {}  # camera_id -> cv2.VideoCapture
+# Shared frame buffer: camera_id -> {"frame": ndarray, "ts": time}
+# Stream writes latest frame here; detect/test-capture read from buffer
+_frame_buffer = {}
+_frame_buffer_lock = threading.Lock()
 
 def _probe_native_resolution(camera_id):
     """Open camera, set ultra-high res, read clamped max from driver."""
@@ -179,6 +181,9 @@ def _generate_mjpeg(camera_id, width=None, height=None):
             frame = _read_frame(cap)
             if frame is None:
                 continue
+            # write to shared buffer for detect endpoints
+            with _frame_buffer_lock:
+                _frame_buffer[camera_id] = {"frame": frame.copy(), "ts": time.time()}
             _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
             yield (b"--frame\r\n"
                    b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
@@ -186,6 +191,8 @@ def _generate_mjpeg(camera_id, width=None, height=None):
         pass
     finally:
         cap.release()
+        with _frame_buffer_lock:
+            _frame_buffer.pop(camera_id, None)
 
 
 @app.get("/api/stream")
@@ -199,18 +206,29 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
     )
 
 
+def _get_fresh_frame(camera_id):
+    """Get latest frame from stream buffer, or capture directly."""
+    cap = _get_capture(camera_id)
+    if cap is None:
+        # try buffer as last resort
+        with _frame_buffer_lock:
+            buf = _frame_buffer.get(camera_id)
+        if buf is not None:
+            return buf["frame"]
+        return None
+    try:
+        frame = _read_frame(cap)
+        return frame
+    finally:
+        cap.release()
+
+
 @app.post("/api/detect-frame")
 def detect_frame(camera_id: int = Form(0)):
     """Capture a single frame from camera, run detection, return annotated b64."""
-    cap = _get_capture(camera_id)
-    if cap is None:
-        raise HTTPException(500, "failed to open camera")
-    try:
-        frame = _read_frame(cap)
-        if frame is None:
-            raise HTTPException(500, "failed to capture frame")
-    finally:
-        cap.release()
+    frame = _get_fresh_frame(camera_id)
+    if frame is None:
+        raise HTTPException(500, "failed to capture frame")
 
     cfg = load_config()
     center = find_gauge_center(frame)
@@ -279,16 +297,9 @@ async def auto_calibrate(camera_id: int = Form(0), image: UploadFile = File(None
         if frame is None:
             raise HTTPException(500, "failed to decode uploaded image")
     else:
-        try:
-            cap = _get_capture(camera_id)
-            if cap is None:
-                raise HTTPException(500, "failed to open camera")
-            frame = _read_frame(cap)
-            cap.release()
-            if frame is None:
-                raise HTTPException(500, "failed to capture frame")
-        except Exception as e:
-            raise HTTPException(500, f"camera error: {e}")
+        frame = _get_fresh_frame(camera_id)
+        if frame is None:
+            raise HTTPException(500, "failed to open camera")
 
     center = find_gauge_center(frame)
     if center is None:
@@ -419,16 +430,9 @@ def test_capture():
     """Capture one frame from camera, detect, return result + annotated b64."""
     cfg = load_config()
     cam_id = int(cfg.get("camera_id", 0))
-    try:
-        cap = _get_capture(cam_id)
-        if cap is None:
-            raise HTTPException(500, "failed to open camera")
-        frame = _read_frame(cap)
-        cap.release()
-        if frame is None:
-            raise HTTPException(500, "failed to capture frame")
-    except Exception as e:
-        raise HTTPException(500, f"camera error: {e}")
+    frame = _get_fresh_frame(cam_id)
+    if frame is None:
+        raise HTTPException(500, "failed to capture frame")
 
 
     center = find_gauge_center(frame)
