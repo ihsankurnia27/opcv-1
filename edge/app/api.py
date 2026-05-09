@@ -66,18 +66,24 @@ def save_config(cfg):
 
 
 # --- Camera with background reader ---
-# V4L2 on Orange Pi locks device exclusively. Single background thread
-# owns camera, reads frames, and conditionally runs detection.
-# All endpoints read from the shared buffer only.
+# V4L2 on Orange Pi locks device. Single reader thread captures frames
+# at high speed. Detection runs in separate throttled thread on resized
+# frames to avoid blocking capture.
 
-_frame_buffer = {}         # camera_id -> {frame, jpeg, annotated_jpeg, annotated_b64, result, ts}
+_frame_buffer = {}         # camera_id -> {"frame": ndarray, "jpeg": bytes, "ts": float}
 _frame_buffer_lock = threading.Lock()
 _bg_reader = None
 _bg_reader_lock = threading.Lock()
 _bg_stop = threading.Event()
 
 _detect_enabled = False
-_detect_lock = threading.Lock()
+_last_result = {}
+_last_result_lock = threading.Lock()
+_last_detect_ts = 0
+_detect_thread = None
+_detect_stop = threading.Event()
+_DETECT_INTERVAL = 2.0     # max 1 detection per 2 seconds
+_DETECT_MAX_W = 640        # resize long edge to 640 for detection
 
 
 def _probe_native_resolution(camera_id):
@@ -145,7 +151,7 @@ def list_cameras():
     return devices
 
 
-# --- Background reader thread ---
+# --- Background reader thread (fast capture only) ---
 
 def _start_reader(camera_id, width, height):
     global _bg_reader
@@ -162,7 +168,7 @@ def _start_reader(camera_id, width, height):
 
 
 def _reader_loop(camera_id, width, height):
-    """Single background loop — owns camera, runs detection, writes results to buffer."""
+    """Fast capture loop — no detection. Writes raw frame + JPEG to buffer."""
     cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
     if not cap.isOpened():
         return
@@ -175,79 +181,11 @@ def _reader_loop(camera_id, width, height):
     try:
         while not _bg_stop.is_set():
             ret, frame = cap.read()
-            if not ret or frame is None or frame.size == 0:
-                time.sleep(0.01)
-                continue
-
-            # Always encode raw JPEG
-            _, jpeg_buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
-            buf = {
-                "frame": frame,
-                "jpeg": jpeg_buf.tobytes(),
-                "annotated_jpeg": None,
-                "annotated_b64": None,
-                "result": None,
-                "ts": time.time(),
-            }
-
-            # Run detection if enabled
-            if _detect_enabled:
-                cfg = load_config()
-                center = find_gauge_center(frame)
-                if center:
-                    cx, cy, radius = center
-                    cy += int(cfg["center_offset_y"])
-                    angle_deg = find_needle_angle(
-                        frame, cx, cy, radius,
-                        inner_ratio=float(cfg["inner_ratio"]),
-                        outer_ratio=float(cfg["outer_ratio"]),
-                        blur_kernel=int(cfg["blur_kernel"]),
-                        threshold_block=int(cfg["threshold_block"]),
-                        threshold_c=int(cfg["threshold_c"]),
-                    )
-
-                    min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
-                    min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
-                    new_range = max_v - min_v
-
-                    if min_a <= max_a:
-                        old_range = max_a - min_a
-                        value = ((angle_deg - min_a) * new_range) / old_range + min_v if old_range != 0 else min_v
-                    else:
-                        full_range = (360 - min_a) + max_a
-                        if full_range == 0:
-                            value = min_v
-                        else:
-                            if angle_deg >= min_a:
-                                needle_pos = angle_deg - min_a
-                            else:
-                                needle_pos = (360 - min_a) + angle_deg
-                            value = (needle_pos * new_range) / full_range + min_v
-                    value = max(min_v, min(max_v, value))
-
-                    annotated = draw_needle(frame.copy(), cx, cy, radius, angle_deg,
-                                            inner_ratio=float(cfg["inner_ratio"]),
-                                            outer_ratio=float(cfg["outer_ratio"]),
-                                            min_angle=min_a, max_angle=max_a)
-                    _, ann_buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                    b64 = base64.b64encode(ann_buf).decode()
-
-                    buf["annotated_jpeg"] = ann_buf.tobytes()
-                    buf["annotated_b64"] = b64
-                    buf["result"] = {
-                        "value": round(value, 2),
-                        "angle": round(angle_deg, 2),
-                        "center": {"x": cx, "y": cy, "radius": radius},
-                        "annotated_image": b64,
-                        "error": None,
-                        "w": frame.shape[1],
-                        "h": frame.shape[0],
-                    }
-
-            with _frame_buffer_lock:
-                _frame_buffer[camera_id] = buf
-
-            time.sleep(0.05)
+            if ret and frame is not None and frame.size > 0:
+                _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
+                with _frame_buffer_lock:
+                    _frame_buffer[camera_id] = {"frame": frame, "jpeg": jpeg.tobytes(), "ts": time.time()}
+            time.sleep(0.03)
     finally:
         cap.release()
         with _frame_buffer_lock:
@@ -255,7 +193,6 @@ def _reader_loop(camera_id, width, height):
 
 
 def _get_frame(camera_id):
-    """Get latest raw frame from shared buffer."""
     with _frame_buffer_lock:
         buf = _frame_buffer.get(camera_id)
     if buf is not None and (time.time() - buf["ts"]) < 5.0:
@@ -263,21 +200,102 @@ def _get_frame(camera_id):
     return None
 
 
+# --- Detection thread (throttled, resized) ---
+
+def _start_detector():
+    global _detect_thread
+    if _detect_thread is not None and _detect_thread.is_alive():
+        return
+    _detect_stop.clear()
+    _detect_thread = threading.Thread(target=_detect_loop, daemon=True)
+    _detect_thread.start()
+
+
+def _detect_loop():
+    """Slow loop — runs detection on resized frames, max every DETECT_INTERVAL."""
+    while not _detect_stop.is_set():
+        if not _detect_enabled:
+            time.sleep(0.5)
+            continue
+
+        cfg = load_config()
+        cam_id = int(cfg.get("camera_id", 0))
+        frame = _get_frame(cam_id)
+        if frame is None:
+            time.sleep(0.5)
+            continue
+
+        # Resize to max DETECT_MAX_W on long edge
+        h, w = frame.shape[:2]
+        if max(w, h) > _DETECT_MAX_W:
+            scale = _DETECT_MAX_W / max(w, h)
+            small = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        else:
+            small = frame
+
+        result = _run_detection(small, cfg)
+        result["original_w"] = w
+        result["original_h"] = h
+        # Scale center coords back to original frame
+        if not result.get("error") and result.get("center"):
+            result["center"]["x"] = int(result["center"]["x"] * w / small.shape[1])
+            result["center"]["y"] = int(result["center"]["y"] * h / small.shape[0])
+            if result.get("center", {}).get("radius"):
+                result["center"]["radius"] = int(result["center"]["radius"] * max(w, h) / max(small.shape[1], small.shape[0]))
+            result["annotated_image"] = None  # don't send large b64 in poll
+
+        with _last_result_lock:
+            _last_result.update(result)
+            _last_result["ts"] = time.time()
+
+        # Annotate at full res for the annotated stream
+        if not result.get("error"):
+            cfg = load_config()
+            cx, cy, radius = result["center"]["x"], result["center"]["y"], result["center"]["radius"]
+            angle_deg = float(result["angle"])
+            min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
+            annotated = draw_needle(frame.copy(), cx, cy, radius, angle_deg,
+                                    inner_ratio=float(cfg["inner_ratio"]),
+                                    outer_ratio=float(cfg["outer_ratio"]),
+                                    min_angle=min_a, max_angle=max_a)
+            _, ann_buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            with _last_result_lock:
+                _last_result["annotated_jpeg"] = ann_buf.tobytes()
+                _last_result["annotated_b64"] = base64.b64encode(ann_buf).decode()
+        else:
+            with _last_result_lock:
+                _last_result["annotated_jpeg"] = None
+                _last_result["annotated_b64"] = None
+
+        time.sleep(_DETECT_INTERVAL)
+
+
 # --- MJPEG stream generator ---
 
 def _generate_mjpeg(camera_id, width, height, annotate=False):
     _start_reader(camera_id, width, height)
+    if annotate:
+        _start_detector()
     try:
         while True:
             with _frame_buffer_lock:
                 buf = _frame_buffer.get(camera_id)
-            if buf:
-                key = "annotated_jpeg" if annotate else "jpeg"
-                jpeg = buf.get(key) or buf["jpeg"]
-                yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
-            else:
+            if buf is None:
                 time.sleep(0.05)
+                continue
+
+            if annotate:
+                with _last_result_lock:
+                    ann_jpeg = _last_result.get("annotated_jpeg")
+                if ann_jpeg:
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + ann_jpeg + b"\r\n")
+                else:
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + buf["jpeg"] + b"\r\n")
+            else:
+                yield (b"--frame\r\n"
+                       b"Content-Type: image/jpeg\r\n\r\n" + buf["jpeg"] + b"\r\n")
     except GeneratorExit:
         pass
 
@@ -297,14 +315,18 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
 @app.post("/api/detect")
 def set_detect(enabled: bool = Form(...)):
     global _detect_enabled
-    with _detect_lock:
+    with _last_result_lock:
         _detect_enabled = enabled
+        if not enabled:
+            _last_result.clear()
+    if enabled:
+        _start_detector()
     return {"enabled": _detect_enabled}
 
 
 @app.get("/api/detect")
 def get_detect():
-    with _detect_lock:
+    with _last_result_lock:
         return {"enabled": _detect_enabled}
 
 
@@ -312,16 +334,10 @@ def get_detect():
 
 @app.get("/api/latest-result")
 def latest_result():
-    cfg = load_config()
-    cam_id = int(cfg.get("camera_id", 0))
-    with _frame_buffer_lock:
-        buf = _frame_buffer.get(cam_id)
-    if buf and buf.get("result") is not None and (time.time() - buf["ts"]) < 5.0:
-        return buf["result"]
-    frame = _get_frame(cam_id)
-    if frame is None:
-        raise HTTPException(500, "no frame available")
-    return _run_detection(frame, cfg)
+    with _last_result_lock:
+        if _last_result.get("angle") is not None and (time.time() - _last_result.get("ts", 0)) < 10.0:
+            return {k: v for k, v in _last_result.items() if k not in ("annotated_jpeg", "annotated_b64", "ts")}
+    return {"error": "no result yet"}
 
 
 # --- Detection helpers ---
@@ -382,11 +398,11 @@ def _run_detection(frame, cfg):
 @app.post("/api/detect-frame")
 def detect_frame(camera_id: int = Form(0)):
     cfg = load_config()
+    # on-demand detection using latest frame
     frame = _get_frame(camera_id)
     if frame is None:
         raise HTTPException(500, "failed to capture frame")
-    result = _run_detection(frame, cfg)
-    return result
+    return _run_detection(frame, cfg)
 
 
 # --- Auto-calibrate ---
@@ -519,17 +535,56 @@ def proxy_points():
         raise HTTPException(502, str(e))
 
 
-# --- Test capture (one-shot) ---
+# --- One-shot (resized detection, returns annotated image) ---
+
+def _resize_for_detect(img):
+    """Resize img so longest edge <= DETECT_MAX_W. Returns (resized, scale)."""
+    h, w = img.shape[:2]
+    if max(w, h) <= _DETECT_MAX_W:
+        return img, 1.0
+    scale = _DETECT_MAX_W / max(w, h)
+    return cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA), 1.0 / scale
+
+
+@app.post("/api/one-shot")
+def one_shot():
+    """Capture latest frame, run detection on resized version, return annotated result with original coords."""
+    cfg = load_config()
+    cam_id = int(cfg.get("camera_id", 0))
+    full = _get_frame(cam_id)
+    if full is None:
+        raise HTTPException(500, "failed to capture frame — start stream first")
+
+    h_full, w_full = full.shape[:2]
+    small, upscale = _resize_for_detect(full)
+    result = _run_detection(small, cfg)
+    if result.get("error"):
+        return result
+
+    # Scale coords back to original frame
+    ctr = result["center"]
+    ctr["x"] = int(ctr["x"] * upscale)
+    ctr["y"] = int(ctr["y"] * upscale)
+    ctr["radius"] = int(ctr["radius"] * upscale)
+    result["center"] = ctr
+    # Re-annotate at full res
+    angle_deg = float(result["angle"])
+    min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
+    annotated = draw_needle(full.copy(), ctr["x"], ctr["y"], ctr["radius"], angle_deg,
+                            inner_ratio=float(cfg["inner_ratio"]),
+                            outer_ratio=float(cfg["outer_ratio"]),
+                            min_angle=min_a, max_angle=max_a)
+    _, ann_buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    result["annotated_image"] = base64.b64encode(ann_buf).decode()
+    result["w"] = w_full
+    result["h"] = h_full
+    return result
+
 
 @app.post("/api/test-capture")
 def test_capture():
-    cfg = load_config()
-    cam_id = int(cfg.get("camera_id", 0))
-    frame = _get_frame(cam_id)
-    if frame is None:
-        raise HTTPException(500, "failed to capture frame")
-    result = _run_detection(frame, cfg)
-    return result
+    """Legacy alias for one-shot."""
+    return one_shot()
 
 
 # --- External detect endpoint ---

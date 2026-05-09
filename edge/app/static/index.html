@@ -903,7 +903,7 @@ async function oneShot() {
   try {
     let result;
     if (cameraMode === 'edge') {
-      const r = await api('GET', '/api/latest-result');
+      const r = await api('POST', '/api/one-shot');
       result = r;
     } else {
       const video = q('feed-video');
