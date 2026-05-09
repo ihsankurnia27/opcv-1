@@ -76,6 +76,7 @@ _bg_reader_lock = threading.Lock()
 _bg_stop = threading.Event()
 
 _DETECT_MAX_W = 640
+_STREAM_MAX_W = 640
 
 
 def _probe_native_resolution(camera_id):
@@ -173,7 +174,14 @@ def _reader_loop(camera_id, width, height):
         while not _bg_stop.is_set():
             ret, frame = cap.read()
             if ret and frame is not None and frame.size > 0:
-                _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
+                h, w = frame.shape[:2]
+                if max(w, h) > _STREAM_MAX_W:
+                    scale = _STREAM_MAX_W / max(w, h)
+                    small = cv2.resize(frame, (int(w * scale), int(h * scale)),
+                                       interpolation=cv2.INTER_AREA)
+                else:
+                    small = frame
+                _, jpeg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 50])
                 with _frame_buffer_lock:
                     _frame_buffer[camera_id] = {"frame": frame, "jpeg": jpeg.tobytes(), "ts": time.time()}
             time.sleep(0.03)
