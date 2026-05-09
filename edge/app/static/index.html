@@ -747,10 +747,20 @@ function stopDetectLoop() {
   detectEnabled = false;
 }
 
+async function callOneShot() {
+  const form = new FormData();
+  ['min_angle','max_angle','min_value','max_value','center_offset_y',
+   'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+    form.append(id, q(id).value));
+  const r = await fetch(API + '/api/one-shot', { method: 'POST', body: form });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
 async function loopOneShot() {
   if (!detectEnabled) return;
   try {
-    const r = await api('POST', '/api/one-shot');
+    const r = await callOneShot();
     if (!r.error) {
       q('hud-value').textContent = r.value;
       q('hud-value').className = 'hud-value amber';
@@ -893,8 +903,7 @@ async function oneShot() {
   try {
     let result;
     if (cameraMode === 'edge') {
-      const r = await api('POST', '/api/one-shot');
-      result = r;
+      result = await callOneShot();
     } else {
       const video = q('feed-video');
       if (!video || !video.videoWidth) { toast('[FAIL] No client video frame', 'error'); return; }
@@ -1058,23 +1067,14 @@ async function manualCalibrate() {
       if (!r.ok) throw new Error(await r.text());
       result = await r.json();
     } else {
-      const img = q('feed-stream');
-      if (!img || !img.complete || !img.naturalWidth) throw new Error('No edge stream frame');
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      captureBlob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
-      const form = new FormData();
-      form.append('image', captureBlob, 'frame.jpg');
-      ['min_angle','max_angle','min_value','max_value','center_offset_y',
-       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
-        form.append(id, q(id).value));
-      form.append('need_annotation', 'true');
-      const r = await fetch(API + '/detect', { method: 'POST', body: form });
-      if (!r.ok) throw new Error(await r.text());
-      result = await r.json();
+      // Edge cam: use one-shot endpoint (resized detect, fast)
+      result = await callOneShot();
+      // rebuild blob for learn-cal from the result annotated image
+      const b64 = result && result.annotated_image;
+      if (b64) {
+        const resp = await fetch('data:image/jpeg;base64,' + b64);
+        captureBlob = await resp.blob();
+      }
     }
 
     if (result.error) { toast('[FAIL] ' + result.error, 'error'); btn.disabled = false; btn.textContent = 'Manual Cal'; return; }

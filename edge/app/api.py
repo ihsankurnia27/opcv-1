@@ -284,8 +284,29 @@ def _run_detection(frame, cfg):
 # --- One-shot (resized detection, scaled coords) ---
 
 @app.post("/api/one-shot")
-def one_shot():
+def one_shot(
+    min_value: float = Form(None),
+    max_value: float = Form(None),
+    min_angle: float = Form(None),
+    max_angle: float = Form(None),
+    center_offset_y: float = Form(None),
+    inner_ratio: float = Form(None),
+    outer_ratio: float = Form(None),
+    blur_kernel: int = Form(None),
+    threshold_block: int = Form(None),
+    threshold_c: int = Form(None),
+):
     cfg = load_config()
+    # Merge optional overrides
+    for k, v in [("min_value", min_value), ("max_value", max_value),
+                  ("min_angle", min_angle), ("max_angle", max_angle),
+                  ("center_offset_y", center_offset_y),
+                  ("inner_ratio", inner_ratio), ("outer_ratio", outer_ratio),
+                  ("blur_kernel", blur_kernel),
+                  ("threshold_block", threshold_block), ("threshold_c", threshold_c)]:
+        if v is not None:
+            cfg[k] = v
+
     cam_id = int(cfg.get("camera_id", 0))
     full = _get_frame(cam_id)
     if full is None:
@@ -332,7 +353,8 @@ async def auto_calibrate(camera_id: int = Form(0), image: UploadFile = File(None
         if frame is None:
             raise HTTPException(500, "failed to get frame from stream")
 
-    center = find_gauge_center(frame)
+    small, _upscale = _resize_for_detect(frame)
+    center = find_gauge_center(small)
     if center is None:
         return {"error": "could not find gauge center"}
 
@@ -344,7 +366,7 @@ async def auto_calibrate(camera_id: int = Form(0), image: UploadFile = File(None
     mg = learned.get("min_gap_deg", 20)
 
     result = detect_scale_range(
-        frame, cx, cy, radius,
+        small, cx, cy, radius,
         blur_kernel=3,
         threshold_block=0,
         threshold_c=0,
