@@ -208,17 +208,17 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
 
 def _get_fresh_frame(camera_id):
     """Get latest frame from stream buffer, or capture directly."""
+    # try buffer first (stream has camera open)
+    with _frame_buffer_lock:
+        buf = _frame_buffer.get(camera_id)
+    if buf is not None and (time.time() - buf["ts"]) < 5.0:
+        return buf["frame"]
+    # no buffer — capture directly
     cap = _get_capture(camera_id)
     if cap is None:
-        # try buffer as last resort
-        with _frame_buffer_lock:
-            buf = _frame_buffer.get(camera_id)
-        if buf is not None:
-            return buf["frame"]
         return None
     try:
-        frame = _read_frame(cap)
-        return frame
+        return _read_frame(cap)
     finally:
         cap.release()
 
