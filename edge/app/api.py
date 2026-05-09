@@ -249,36 +249,52 @@ def _run_detection(frame, cfg):
     new_range = max_v - min_v
 
     if min_a <= max_a:
-        old_range = max_a - min_a
-        value = ((angle_deg - min_a) * new_range) / old_range + min_v if old_range != 0 else min_v
+        denom = max_a - min_a
+        numer = angle_deg - min_a
     else:
-        full_range = (360 - min_a) + max_a
-        if full_range == 0:
-            value = min_v
+        denom = (360 - min_a) + max_a
+        if angle_deg >= min_a:
+            numer = angle_deg - min_a
         else:
-            if angle_deg >= min_a:
-                needle_pos = angle_deg - min_a
-            else:
-                needle_pos = (360 - min_a) + angle_deg
-            value = (needle_pos * new_range) / full_range + min_v
-    value = max(min_v, min(max_v, value))
+            numer = (360 - min_a) + angle_deg
 
-    annotated = draw_needle(frame.copy(), cx, cy, radius, angle_deg,
-                            inner_ratio=float(cfg["inner_ratio"]),
-                            outer_ratio=float(cfg["outer_ratio"]),
-                            min_angle=min_a, max_angle=max_a)
-    _, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    annotated_b64 = base64.b64encode(buffer).decode("utf-8")
+    value = ((numer * new_range) / denom + min_v) if denom != 0 else min_v
+    value = max(min_v, min(max_v, value))
 
     h, w = frame.shape[:2]
     return {
         "value": round(value, 2),
         "angle": round(angle_deg, 2),
         "center": {"x": cx, "y": cy, "radius": radius},
-        "annotated_image": annotated_b64,
         "error": None,
         "w": w, "h": h,
     }
+
+
+def _finalize_detect_result(result, full_img, upscale, cfg, need_annotation=True):
+    ctr = result["center"]
+    ctr["x"] = int(ctr["x"] * upscale)
+    ctr["y"] = int(ctr["y"] * upscale)
+    ctr["radius"] = int(ctr["radius"] * upscale)
+    result["center"] = ctr
+
+    h_full, w_full = full_img.shape[:2]
+    result["w"] = w_full
+    result["h"] = h_full
+
+    if need_annotation:
+        angle_deg = float(result["angle"])
+        annotated = draw_needle(full_img.copy(),
+                                ctr["x"], ctr["y"], ctr["radius"], angle_deg,
+                                inner_ratio=float(cfg["inner_ratio"]),
+                                outer_ratio=float(cfg["outer_ratio"]),
+                                min_angle=float(cfg["min_angle"]),
+                                max_angle=float(cfg["max_angle"]))
+        _, ann_buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        result["annotated_image"] = base64.b64encode(ann_buf).decode()
+    else:
+        result["annotated_image"] = None
+    return result
 
 
 # --- One-shot (resized detection, scaled coords) ---
@@ -312,29 +328,12 @@ def one_shot(
     if full is None:
         raise HTTPException(500, "no frame — start stream first")
 
-    h_full, w_full = full.shape[:2]
     small, upscale = _resize_for_detect(full)
     result = _run_detection(small, cfg)
     if result.get("error"):
         return result
 
-    ctr = result["center"]
-    ctr["x"] = int(ctr["x"] * upscale)
-    ctr["y"] = int(ctr["y"] * upscale)
-    ctr["radius"] = int(ctr["radius"] * upscale)
-    result["center"] = ctr
-
-    angle_deg = float(result["angle"])
-    min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
-    annotated = draw_needle(full.copy(), ctr["x"], ctr["y"], ctr["radius"], angle_deg,
-                            inner_ratio=float(cfg["inner_ratio"]),
-                            outer_ratio=float(cfg["outer_ratio"]),
-                            min_angle=min_a, max_angle=max_a)
-    _, ann_buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    result["annotated_image"] = base64.b64encode(ann_buf).decode()
-    result["w"] = w_full
-    result["h"] = h_full
-    return result
+    return _finalize_detect_result(result, full, upscale, cfg)
 
 
 # --- Auto-calibrate ---
@@ -478,7 +477,7 @@ def detect_frame(camera_id: int = Form(0)):
     frame = _get_frame(camera_id)
     if frame is None:
         raise HTTPException(500, "failed to capture frame")
-    return _run_detection(frame, cfg)
+    return _finalize_detect_result(_run_detection(frame, cfg), frame, 1.0, cfg)
 
 
 # --- External detect endpoint ---
@@ -503,51 +502,25 @@ async def detect(
     img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
     if img is None:
         return {"error": "could not decode image"}
-    center = find_gauge_center(img)
-    if center is None:
-        return {"error": "could not find gauge center"}
-    cx, cy, radius = center
-    cy_offset = cy + int(center_offset_y)
-    angle_deg = find_needle_angle(img, cx, cy_offset, radius,
-                                   inner_ratio=inner_ratio,
-                                   outer_ratio=outer_ratio,
-                                   blur_kernel=blur_kernel,
-                                   threshold_block=threshold_block,
-                                   threshold_c=threshold_c)
-    old_range = max_angle - min_angle
-    new_range = max_value - min_value
-    if min_angle <= max_angle:
-        if old_range == 0:
-            value = min_value
-        else:
-            value = ((angle_deg - min_angle) * new_range) / old_range + min_value
-    else:
-        full_range = (360 - min_angle) + max_angle
-        if full_range == 0:
-            value = min_value
-        else:
-            if angle_deg >= min_angle:
-                needle_pos = angle_deg - min_angle
-            else:
-                needle_pos = (360 - min_angle) + angle_deg
-            value = (needle_pos * new_range) / full_range + min_value
-    value = max(min_value, min(max_value, value))
-    annotated_b64 = None
-    if need_annotation:
-        annotated = draw_needle(img.copy(), cx, cy_offset, radius, angle_deg,
-                                inner_ratio=inner_ratio, outer_ratio=outer_ratio,
-                                min_angle=min_angle, max_angle=max_angle)
-        _, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        annotated_b64 = base64.b64encode(buffer).decode("utf-8")
-    h, w = img.shape[:2]
-    return {
-        "value": round(value, 2),
-        "angle": round(angle_deg, 2),
-        "center": {"x": cx, "y": cy_offset, "radius": radius},
-        "annotated_image": annotated_b64,
-        "error": None,
-        "w": w, "h": h,
+
+    small, upscale = _resize_for_detect(img)
+    cfg = {
+        "center_offset_y": center_offset_y,
+        "inner_ratio": inner_ratio,
+        "outer_ratio": outer_ratio,
+        "blur_kernel": blur_kernel,
+        "threshold_block": threshold_block,
+        "threshold_c": threshold_c,
+        "min_angle": min_angle,
+        "max_angle": max_angle,
+        "min_value": min_value,
+        "max_value": max_value,
     }
+    result = _run_detection(small, cfg)
+    if result.get("error"):
+        return result
+
+    return _finalize_detect_result(result, img, upscale, cfg, need_annotation=need_annotation)
 
 
 VERSION_PATH = "/app/version.txt"

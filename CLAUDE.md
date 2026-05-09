@@ -43,12 +43,12 @@ Edge device: cron git pull every 10min → auto rebuild
 ssh -i ~/key1 youri@10.8.0.3
 cd /home/youri/opcv-1/server && docker compose up -d
 
-# Edge
+# Edge (password: orangepi)
 sshpass -p orangepi ssh root@10.8.0.4
 cd /root/edge && docker compose up -d
 
-# Edge manual update
-ssh root@10.8.0.4 "cd /root/opcv-1 && git pull && cd /root/edge && docker compose up -d --build"
+# Edge manual update (password: orangepi)
+sshpass -p orangepi ssh root@10.8.0.4 "cd /root/opcv-1 && git pull && cd /root/edge && docker compose up -d --build"
 ```
 
 ## Database

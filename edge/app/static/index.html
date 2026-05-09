@@ -996,7 +996,6 @@ async function fetchPoints() {
       sel.appendChild(opt);
     });
     if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
-    fillPointValues();
     toast('[OK] ' + r.length + ' points');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
