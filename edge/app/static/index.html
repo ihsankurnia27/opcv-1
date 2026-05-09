@@ -606,7 +606,12 @@ async function toggleStream() {
 }
 
 function stopStream() {
-  if (detectEnabled) toggleDetect();
+  if (detectEnabled) {
+    stopDetectPoll();
+    detectEnabled = false;
+    q('btn-detect').textContent = 'Detect';
+    q('btn-detect').className = 'btn btn-sm';
+  }
   streamActive = false;
   q('feed-stream').style.display = 'none';
   q('feed-video').style.display = 'none';
@@ -721,13 +726,16 @@ function toggleDetect() {
   if (detectEnabled) {
     btn.textContent = 'Stop';
     btn.className = 'btn btn-sm btn-cyan';
-    if (streamActive) {
-      startDetectPoll();
-      // restart edge stream with detect=1
-      if (cameraMode === 'edge') {
-        stopStream();
-        startEdgeStream();
-      }
+    q('hud-status').textContent = 'Active';
+    q('hud-status').className = 'hud-value cyan';
+    startDetectPoll();
+    // restart stream with detect=1
+    if (cameraMode === 'edge' && streamActive) {
+      const camId = q('camera_id').value;
+      const res = q('cam_resolution').value.split('x').map(Number);
+      const w = res[0] || 0;
+      const h = res[1] || 0;
+      q('feed-stream').src = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h + '&detect=1';
     }
   } else {
     stopDetectPoll();
@@ -735,13 +743,14 @@ function toggleDetect() {
     btn.className = 'btn btn-sm';
     q('hud-status').textContent = 'Idle';
     q('hud-status').className = 'hud-value';
-    // restart edge stream without detect
     if (cameraMode === 'edge' && streamActive) {
-      stopStream();
-      startEdgeStream();
+      const camId = q('camera_id').value;
+      const res = q('cam_resolution').value.split('x').map(Number);
+      const w = res[0] || 0;
+      const h = res[1] || 0;
+      q('feed-stream').src = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h;
     }
   }
-  // sync to server
   fetch(API + '/api/detect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({enabled: detectEnabled}) }).catch(() => {});
 }
 
