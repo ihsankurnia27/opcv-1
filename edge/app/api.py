@@ -178,8 +178,7 @@ def _reader_loop(camera_id, width, height, use_mjpeg):
             if ret and frame is not None and frame.size > 0:
                 with _frame_buffer_lock:
                     _frame_buffer[camera_id] = {"frame": frame, "ts": time.time()}
-            else:
-                time.sleep(0.01)
+            time.sleep(0.01)
     finally:
         cap.release()
         with _frame_buffer_lock:
