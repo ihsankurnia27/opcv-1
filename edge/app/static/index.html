@@ -94,7 +94,6 @@ body::before {
 .btn-green { border-color: #1a4a2a; color: var(--green); }
 .btn-green:hover { border-color: var(--green); background: rgba(34,197,94,.08); box-shadow: 0 0 16px rgba(34,197,94,.12); }
 .btn-sm { padding: 5px 10px; font-size: .65rem; }
-.btn-icon { padding: 7px 10px; font-size: .8rem; }
 .btn.active { background: rgba(240,180,41,.12); border-color: var(--amber-dim); color: var(--amber); }
 
 /* TOOLBAR */
@@ -141,7 +140,7 @@ body::before {
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 8px;
 }
-.panel-title::before { content: '❖'; font-size: .55rem; color: var(--amber-dim); }
+.panel-title::before { content: '\2751'; font-size: .55rem; color: var(--amber-dim); }
 .panel-title .sub { color: var(--text-dim); font-weight: 400; margin-left: auto; font-size: .55rem; letter-spacing: .1em; }
 
 /* Fields */
@@ -258,17 +257,6 @@ input[type="password"] { letter-spacing: .3em; }
 .feed-placeholder .icon { font-size: 2rem; opacity: .3; }
 .feed-placeholder .sub { font-size: .6rem; opacity: .5; }
 
-/* Auto-detect checkbox */
-.auto-toggle {
-  display: flex; align-items: center; gap: 6px;
-  font-size: .6rem; color: var(--text-dim);
-  text-transform: uppercase; letter-spacing: .06em;
-  cursor: pointer;
-}
-.auto-toggle input[type=checkbox] {
-  width: auto; accent-color: var(--amber);
-}
-
 /* RESULT CARD */
 #result-card {
   display: none;
@@ -350,17 +338,14 @@ input[type="password"] { letter-spacing: .3em; }
     <div class="term-title">Edge <span>Gauge</span> Terminal</div>
     <div class="term-tag">v3.0 · Live Feed</div>
   </div>
-  <div class="term-badge" id="health-badge">▼ CHECKING</div>
+  <div class="term-badge" id="health-badge">CHECKING</div>
 </header>
 
 <div class="toolbar">
-  <button class="btn btn-amber" onclick="loadConfig()">⟳ Load</button>
-  <button class="btn btn-cyan" onclick="saveConfig()">⤒ Save</button>
-  <button class="btn btn-red" id="btn-detect-live" onclick="toggleDetect()">◎ Detect</button>
-  <button class="btn btn-sm" onclick="testCapture()" style="color:var(--text-dim)">◉ One-shot</button>
-  <button class="btn btn-sm" id="btn-update" onclick="runUpdate()" style="color:var(--green);border-color:#1a4a2a">↻ Update</button>
+  <button class="btn btn-amber" onclick="loadConfig()">Load</button>
+  <button class="btn btn-cyan" onclick="saveConfig()">Save</button>
+  <button class="btn btn-sm" id="btn-update" onclick="runUpdate()" style="color:var(--green);border-color:#1a4a2a">Update</button>
   <span style="font-size:.55rem;color:var(--text-dim)" id="version-display"></span>
-  <span style="font-size:.55rem;color:var(--text-dim);margin-left:auto" id="fps-display"></span>
 </div>
 
 <div class="main-grid">
@@ -375,7 +360,7 @@ input[type="password"] { letter-spacing: .3em; }
           <label>Point ID</label>
           <div class="point-row">
             <select id="point"></select>
-            <button class="btn btn-icon btn-sm" onclick="fetchPoints()" title="Fetch points">↻</button>
+            <button class="btn btn-sm" onclick="fetchPoints()" title="Fetch points">Reload</button>
           </div>
         </div>
       </div>
@@ -402,13 +387,13 @@ input[type="password"] { letter-spacing: .3em; }
           <div style="display:flex;gap:6px">
             <select id="cam_resolution" style="flex:1">
               <option value="0x0">Auto (native)</option>
-              <option value="640x480">640 × 480</option>
-              <option value="800x600">800 × 600</option>
-              <option value="1024x768">1024 × 768</option>
-              <option value="1280x720">1280 × 720</option>
-              <option value="1280x960">1280 × 960</option>
-              <option value="1920x1080">1920 × 1080</option>
-              <option value="2592x1944">2592 × 1944</option>
+              <option value="640x480">640 x 480</option>
+              <option value="800x600">800 x 600</option>
+              <option value="1024x768">1024 x 768</option>
+              <option value="1280x720">1280 x 720</option>
+              <option value="1280x960">1280 x 960</option>
+              <option value="1920x1080">1920 x 1080</option>
+              <option value="2592x1944">2592 x 1944</option>
             </select>
             <span style="color:var(--text-dim);line-height:28px;white-space:nowrap" id="native-res-label"></span>
           </div>
@@ -417,18 +402,18 @@ input[type="password"] { letter-spacing: .3em; }
     </div>
 
     <div class="panel">
-      <div class="panel-title">Calibration <span class="sub">VALUE ⇄ ANGLE</span></div>
+      <div class="panel-title">Calibration <span class="sub">VALUE / ANGLE</span></div>
       <div class="field-row">
         <div class="field-group"><label>Min Value</label><input id="min_value" type="number" step="any" value="0"></div>
         <div class="field-group"><label>Max Value</label><input id="max_value" type="number" step="any" value="10"></div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Min Angle (°)</label><input id="min_angle" type="number" min="0" max="360" value="45"></div>
-        <div class="field-group"><label>Max Angle (°)</label><input id="max_angle" type="number" min="0" max="360" value="315"></div>
+        <div class="field-group"><label>Min Angle</label><input id="min_angle" type="number" min="0" max="360" value="45"></div>
+        <div class="field-group"><label>Max Angle</label><input id="max_angle" type="number" min="0" max="360" value="315"></div>
       </div>
       <div class="field-row">
-        <button class="btn btn-sm btn-cyan" id="btn-auto-cal" onclick="autoCalibrate()">⟲ Auto-Cal</button>
-        <button class="btn btn-sm" id="btn-manual-cal" onclick="manualCalibrate()">⟐ Manual Cal</button>
+        <button class="btn btn-sm btn-cyan" id="btn-auto-cal" onclick="autoCalibrate()">Auto-Cal</button>
+        <button class="btn btn-sm" id="btn-manual-cal" onclick="manualCalibrate()">Manual Cal</button>
       </div>
     </div>
 
@@ -465,24 +450,21 @@ input[type="password"] { letter-spacing: .3em; }
           <button class="feed-tab" data-mode="client" onclick="setCameraMode('client')">Client Cam</button>
         </div>
         <div class="feed-ctrl">
-          <button class="btn btn-sm btn-green" id="btn-stream" onclick="toggleStream()">▶ Start</button>
+          <button class="btn btn-sm btn-green" id="btn-stream" onclick="toggleStream()">Start</button>
+          <button class="btn btn-sm" id="btn-detect" onclick="toggleDetect()">Detect</button>
+          <button class="btn btn-sm" onclick="oneShot()">One-shot</button>
         </div>
       </div>
 
       <div class="feed-body" id="feed-body">
-        <!-- Edge camera: MJPEG stream -->
         <img id="feed-stream" style="display:none">
-        <!-- Client camera: getUserMedia -->
         <video id="feed-video" style="display:none" playsinline muted></video>
-        <!-- Overlay canvas for detection graphics -->
         <canvas id="feed-canvas"></canvas>
-        <!-- Calibration actions -->
         <div class="cal-actions" id="cal-actions">
-          <button class="btn btn-sm btn-green" onclick="applyCalibration()">✓ Apply</button>
-          <button class="btn btn-sm btn-red" onclick="cancelCalibration()">✗ Cancel</button>
+          <button class="btn btn-sm btn-green" onclick="applyCalibration()">Apply</button>
+          <button class="btn btn-sm btn-red" onclick="cancelCalibration()">Cancel</button>
         </div>
         <div class="cal-instruct" id="cal-instruct" style="display:none"></div>
-        <!-- HUD -->
         <div class="feed-hud" id="feed-hud">
           <div class="hud-row"><span class="hud-label">Value</span><span class="hud-value amber" id="hud-value">--</span></div>
           <div class="hud-row"><span class="hud-label">Angle</span><span class="hud-value cyan" id="hud-angle">--</span></div>
@@ -490,16 +472,14 @@ input[type="password"] { letter-spacing: .3em; }
           <hr class="hud-divider">
           <div class="hud-row"><span class="hud-label">Status</span><span class="hud-value green" id="hud-status">Idle</span></div>
         </div>
-        <!-- Placeholder when no feed -->
         <div class="feed-placeholder" id="feed-placeholder">
-          <div class="icon">◉</div>
+          <div class="icon">O</div>
           <div>No Camera Feed</div>
           <div class="sub">Select source and press Start</div>
         </div>
       </div>
     </div>
 
-    <!-- Result panel -->
     <div id="result-card">
       <div class="panel">
         <div class="panel-title">Detection Result <span class="sub" id="result-summary"></span></div>
@@ -520,10 +500,9 @@ const API = '';
 let cameraMode = 'edge';
 let streamActive = false;
 let detectEnabled = false;
-let detectLoopId = null;
+let detectPollId = null;
 let clientStream = null;
-// Manual calibration state
-let calState = 'idle'; // idle | awaiting-min | awaiting-max | done
+let calState = 'idle';
 let calMinAngle = 0;
 let calMaxAngle = 0;
 let calCenter = null;
@@ -557,12 +536,12 @@ async function checkHealth() {
     const h = await api('GET', '/health');
     if (h.status === 'ok') {
       q('term-led').className = 'term-led on';
-      q('health-badge').textContent = '▲ ONLINE';
+      q('health-badge').textContent = 'ONLINE';
       q('health-badge').style.color = 'var(--green)';
     }
   } catch(e) {
     q('term-led').className = 'term-led off';
-    q('health-badge').textContent = '▼ OFFLINE';
+    q('health-badge').textContent = 'OFFLINE';
     q('health-badge').style.color = 'var(--red)';
   }
 }
@@ -581,17 +560,15 @@ async function enumerateCameras() {
       list.forEach(c => {
         const o = document.createElement('option');
         o.value = c.id;
-        const native = (c.max_width > 0) ? ` [max ${c.max_width}×${c.max_height}]` : '';
-        o.textContent = c.label + (c.width > 0 ? ` [${c.width}×${c.height}]` : '') + native;
+        const native = (c.max_width > 0) ? ' [max ' + c.max_width + 'x' + c.max_height + ']' : '';
+        o.textContent = c.label + (c.width > 0 ? ' [' + c.width + 'x' + c.height + ']' : '') + native;
         sel.appendChild(o);
       });
     }
-    // restore saved value
     const saved = sel.dataset.saved;
     if (saved && [...sel.options].some(o => o.value === saved)) {
       sel.value = saved;
     }
-    // show native resolution label
     updateNativeResLabel(list);
   } catch(e) { toast('[FAIL] Camera scan: ' + e.message, 'error'); }
 }
@@ -601,7 +578,7 @@ function updateNativeResLabel(list) {
   const cam = list.find(c => String(c.id) === sel.value);
   const label = q('native-res-label');
   if (cam && cam.max_width > 0) {
-    label.textContent = 'native: ' + cam.max_width + '×' + cam.max_height;
+    label.textContent = 'native: ' + cam.max_width + 'x' + cam.max_height;
   } else {
     label.textContent = '';
   }
@@ -634,7 +611,7 @@ function stopStream() {
   q('feed-stream').style.display = 'none';
   q('feed-video').style.display = 'none';
   q('feed-placeholder').style.display = 'flex';
-  q('btn-stream').textContent = '▶ Start';
+  q('btn-stream').textContent = 'Start';
   q('btn-stream').className = 'btn btn-sm btn-green';
   clearCanvas();
 
@@ -653,22 +630,22 @@ function startEdgeStream() {
   const res = q('cam_resolution').value.split('x').map(Number);
   const w = res[0] || 0;
   const h = res[1] || 0;
-  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h;
+  const detectParam = detectEnabled ? '&detect=1' : '';
+  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h + detectParam;
   const img = q('feed-stream');
   q('feed-placeholder').style.display = 'none';
   q('feed-video').style.display = 'none';
   img.style.display = 'block';
   img.src = url;
-  // match container aspect ratio to actual feed once loaded
   img.onload = () => {
     if (img.naturalWidth && img.naturalHeight) {
       q('feed-body').style.aspectRatio = img.naturalWidth + '/' + img.naturalHeight;
     }
   };
   streamActive = true;
-  q('btn-stream').textContent = '■ Stop';
+  q('btn-stream').textContent = 'Stop';
   q('btn-stream').className = 'btn btn-sm btn-red';
-  if (detectEnabled) { stopDetectLoop(); startDetectLoop(); }
+  if (detectEnabled) startDetectPoll();
 }
 
 async function startClientStream() {
@@ -677,26 +654,22 @@ async function startClientStream() {
       video: { width: 640, height: 480, facingMode: { ideal: 'environment' } },
       audio: false,
     };
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      if (navigator.getUserMedia || navigator.webkitGetUserMedia) {
-        const gum = navigator.getUserMedia || navigator.webkitGetUserMedia;
-        const stream = await new Promise((resolve, reject) => {
-          gum.call(navigator, constraints, resolve, reject);
-        });
-        clientStream = stream;
-      } else {
-        throw new Error('getUserMedia not available in this browser');
-      }
-    } else {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       clientStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } else if (navigator.getUserMedia || navigator.webkitGetUserMedia) {
+      const gum = navigator.getUserMedia || navigator.webkitGetUserMedia;
+      const stream = await new Promise((resolve, reject) => {
+        gum.call(navigator, constraints, resolve, reject);
+      });
+      clientStream = stream;
+    } else {
+      throw new Error('getUserMedia not available');
     }
     const video = q('feed-video');
     video.srcObject = clientStream;
     await video.play();
-    // match aspect ratio from actual video track
     video.onloadedmetadata = () => {
-      const track = video.videoWidth && video.videoHeight;
-      if (track) {
+      if (video.videoWidth && video.videoHeight) {
         q('feed-body').style.aspectRatio = video.videoWidth + '/' + video.videoHeight;
       }
     };
@@ -704,10 +677,10 @@ async function startClientStream() {
     q('feed-stream').style.display = 'none';
     video.style.display = 'block';
     streamActive = true;
-    q('btn-stream').textContent = '■ Stop';
+    q('btn-stream').textContent = 'Stop';
     q('btn-stream').className = 'btn btn-sm btn-red';
     updateCanvasSize();
-    updateDetectState();
+    if (detectEnabled) startDetectPoll();
   } catch(e) {
     if (e.name === 'NotAllowedError') {
       toast('[FAIL] Camera permission denied', 'error');
@@ -727,15 +700,6 @@ function updateCanvasSize() {
   canvas.height = body.clientHeight;
 }
 
-// Called when media element loads with actual dimensions
-function updateCanvasToMedia(w, h) {
-  const body = q('feed-body');
-  const canvas = q('feed-canvas');
-  body.style.aspectRatio = w + '/' + h;
-  canvas.width = body.clientWidth;
-  canvas.height = body.clientHeight;
-}
-
 function clearCanvas() {
   const canvas = q('feed-canvas');
   const ctx = canvas.getContext('2d');
@@ -750,74 +714,66 @@ function resetHUD() {
   q('hud-value').className = 'hud-value';
 }
 
-// === Detection (live) ===
-async function detectLive() {
-  if (!streamActive) { toast('[WARN] Start stream first', 'error'); return; }
-
-  const btn = q('btn-detect-live');
-  btn.disabled = true;
-  btn.textContent = '◎ ...';
-
-  try {
-    let result;
-    if (cameraMode === 'edge') {
-      const camId = q('camera_id').value;
-      const form = new FormData();
-      form.append('camera_id', camId);
-      const r = await fetch(API + '/api/detect-frame', { method: 'POST', body: form });
-      if (!r.ok) throw new Error(await r.text());
-      result = await r.json();
-    } else {
-      // Client camera: capture frame from video
-      const video = q('feed-video');
-      const c = document.createElement('canvas');
-      c.width = video.videoWidth || 640;
-      c.height = video.videoHeight || 480;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(video, 0, 0);
-      const blob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
-      const form = new FormData();
-      form.append('image', blob, 'frame.jpg');
-      form.append('min_angle', q('min_angle').value);
-      form.append('max_angle', q('max_angle').value);
-      form.append('min_value', q('min_value').value);
-      form.append('max_value', q('max_value').value);
-      form.append('center_offset_y', q('center_offset_y').value);
-      form.append('inner_ratio', q('inner_ratio').value);
-      form.append('outer_ratio', q('outer_ratio').value);
-      form.append('blur_kernel', q('blur_kernel').value);
-      form.append('threshold_block', q('threshold_block').value);
-      form.append('threshold_c', q('threshold_c').value);
-      form.append('need_annotation', 'true');
-      const r = await fetch(API + '/detect', { method: 'POST', body: form });
-      if (!r.ok) throw new Error(await r.text());
-      result = await r.json();
+// === Detect toggle ===
+function toggleDetect() {
+  detectEnabled = !detectEnabled;
+  const btn = q('btn-detect');
+  if (detectEnabled) {
+    btn.textContent = 'Stop';
+    btn.className = 'btn btn-sm btn-cyan';
+    if (streamActive) {
+      startDetectPoll();
+      // restart edge stream with detect=1
+      if (cameraMode === 'edge') {
+        stopStream();
+        startEdgeStream();
+      }
     }
+  } else {
+    stopDetectPoll();
+    btn.textContent = 'Detect';
+    btn.className = 'btn btn-sm';
+    q('hud-status').textContent = 'Idle';
+    q('hud-status').className = 'hud-value';
+    // restart edge stream without detect
+    if (cameraMode === 'edge' && streamActive) {
+      stopStream();
+      startEdgeStream();
+    }
+  }
+  // sync to server
+  fetch(API + '/api/detect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({enabled: detectEnabled}) }).catch(() => {});
+}
 
-    if (result.error) { toast('[FAIL] ' + result.error, 'error'); return; }
+function startDetectPoll() {
+  stopDetectPoll();
+  q('hud-status').textContent = 'Active';
+  q('hud-status').className = 'hud-value cyan';
+  pollResult();
+  detectPollId = setInterval(pollResult, 1000);
+}
 
-    // Update HUD
-    q('hud-value').textContent = result.value;
+function stopDetectPoll() {
+  if (detectPollId) {
+    clearInterval(detectPollId);
+    detectPollId = null;
+  }
+}
+
+async function pollResult() {
+  try {
+    const r = await api('GET', '/api/latest-result');
+    if (r.error) return;
+    q('hud-value').textContent = r.value;
     q('hud-value').className = 'hud-value amber';
-    q('hud-angle').textContent = result.angle + '°';
+    q('hud-angle').textContent = r.angle + ' deg';
     q('hud-angle').className = 'hud-value cyan';
-    const ctr = result.center || {};
+    const ctr = r.center || {};
     q('hud-center').textContent = ctr.x !== undefined ? ctr.x + ',' + ctr.y : '--';
     q('hud-status').textContent = 'Detected';
     q('hud-status').className = 'hud-value green';
-
-    // Draw overlay on canvas
-    drawOverlay(result);
-
-    // Show result panel
-    showResult(result);
-
-  } catch(e) {
-    toast('[FAIL] ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '◎ Detect';
-  }
+    drawOverlay(r);
+  } catch(e) { /* ignore */ }
 }
 
 // === Overlay drawing ===
@@ -832,34 +788,28 @@ function drawOverlay(result) {
   const ctr = result.center;
   if (!ctr || ctr.x === undefined) return;
 
-  // Get media element and its actual rendered size
   const img = q('feed-stream');
   const video = q('feed-video');
   const media = img.style.display !== 'none' ? img : video;
   let mediaW, mediaH;
   if (media.tagName === 'VIDEO') {
-    mediaW = media.videoWidth || 640;
-    mediaH = media.videoHeight || 480;
+    mediaW = video.videoWidth || 640;
+    mediaH = video.videoHeight || 480;
   } else {
-    // Use detection result dimensions from server
     mediaW = result.w || 640;
     mediaH = result.h || 480;
   }
-  // image displayed in the feed-body with object-fit:contain
-  // compute the actual rendered rect
   const contW = body.clientWidth;
   const contH = body.clientHeight;
   const imgAspect = mediaW / mediaH;
   const contAspect = contW / contH;
   let renderW, renderH, offX, offY;
   if (imgAspect > contAspect) {
-    // image wider than container — letterbox top/bottom
     renderW = contW;
     renderH = contW / imgAspect;
     offX = 0;
     offY = (contH - renderH) / 2;
   } else {
-    // image taller than container — letterbox left/right
     renderH = contH;
     renderW = contH * imgAspect;
     offX = (contW - renderW) / 2;
@@ -871,10 +821,9 @@ function drawOverlay(result) {
   const cx = offX + ctr.x * scaleX;
   const cy = offY + ctr.y * scaleY;
   const r = (ctr.radius || 100) * Math.min(scaleX, scaleY);
-  const rNeedle = r * 0.85;  // match Python draw_needle
-  const rRef = r * 0.7;  // match Python draw_needle ref lines
+  const rNeedle = r * 0.85;
+  const rRef = r * 0.7;
 
-  // Inner sampling circle
   const cfg = getFormValues();
   const innerRatio = parseFloat(cfg.inner_ratio) || 0.6;
   const outerRatio = parseFloat(cfg.outer_ratio) || 0.8;
@@ -894,20 +843,17 @@ function drawOverlay(result) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Gauge outer circle
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.strokeStyle = 'rgba(240,180,41,.25)';
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Center dot
   ctx.beginPath();
   ctx.arc(cx, cy, 3, 0, Math.PI * 2);
   ctx.fillStyle = '#f0b429';
   ctx.fill();
 
-  // Angle needle — OpenCV coords: 0°=right, 90°=down (y-down canvas same)
   const angleRad = result.angle * Math.PI / 180;
   const nx = cx + rNeedle * Math.cos(angleRad);
   const ny = cy + rNeedle * Math.sin(angleRad);
@@ -918,7 +864,6 @@ function drawOverlay(result) {
   ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  // Min/Max ref lines
   const minA = parseFloat(cfg.min_angle) || 0;
   const maxA = parseFloat(cfg.max_angle) || 0;
   for (const a of [minA, maxA]) {
@@ -944,7 +889,7 @@ function showResult(r) {
   q('result-img').style.display = 'block';
   q('result-data').textContent = JSON.stringify({value: r.value, angle: r.angle, center: r.center}, null, 2);
   q('result-data').style.display = 'block';
-  q('result-summary').textContent = r.value + ' @ ' + r.angle + '°';
+  q('result-summary').textContent = r.value + ' @ ' + r.angle + ' deg';
 }
 
 function hideResult() {
@@ -953,41 +898,36 @@ function hideResult() {
   resetHUD();
 }
 
-// === Detect toggle ===
-function toggleDetect() {
-  detectEnabled = !detectEnabled;
-  const btn = q('btn-detect-live');
-  if (detectEnabled) {
-    btn.textContent = '■ Detect';
-    btn.className = 'btn btn-cyan';
-    if (streamActive) startDetectLoop();
-    else toast('[WARN] Start stream first', 'error');
-  } else {
-    stopDetectLoop();
-    btn.textContent = '◎ Detect';
-    btn.className = 'btn btn-red';
-    q('hud-status').textContent = 'Idle';
-    q('hud-status').className = 'hud-value';
-  }
-}
-
-function startDetectLoop() {
-  stopDetectLoop();
-  q('hud-status').textContent = 'Active';
-  q('hud-status').className = 'hud-value cyan';
-  detectLive();
-  detectLoopId = setInterval(detectLive, 2000);
-}
-
-function stopDetectLoop() {
-  if (detectLoopId) {
-    clearInterval(detectLoopId);
-    detectLoopId = null;
-  }
-}
-
-function updateDetectState() {
-  if (detectEnabled && streamActive) startDetectLoop();
+// === One-shot ===
+async function oneShot() {
+  try {
+    let result;
+    if (cameraMode === 'edge') {
+      const r = await api('GET', '/api/latest-result');
+      result = r;
+    } else {
+      const video = q('feed-video');
+      if (!video || !video.videoWidth) { toast('[FAIL] No client video frame', 'error'); return; }
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth;
+      c.height = video.videoHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      const blob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
+      const form = new FormData();
+      form.append('image', blob, 'frame.jpg');
+      ['min_angle','max_angle','min_value','max_value','center_offset_y',
+       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+        form.append(id, q(id).value));
+      form.append('need_annotation', 'true');
+      const r2 = await fetch(API + '/detect', { method: 'POST', body: form });
+      if (!r2.ok) throw new Error(await r2.text());
+      result = await r2.json();
+    }
+    if (result.error) { toast('[FAIL] ' + result.error, 'error'); return; }
+    showResult(result);
+    toast('[OK] Read: ' + result.value + ' at ' + result.angle + ' deg');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
 
 // === Config ===
@@ -1007,21 +947,18 @@ async function loadConfig() {
       const el = q(k);
       if (el && el.tagName !== 'SELECT') el.value = c[k];
     }
-    // migrate old cam_width/cam_height → cam_resolution
     const resEl = q('cam_resolution');
     if (resEl && c.cam_width && c.cam_height) {
       const legacy = c.cam_width + 'x' + c.cam_height;
       if ([...resEl.options].some(o => o.value === legacy)) {
         resEl.value = legacy;
       } else {
-        // custom res — add option
         const opt = document.createElement('option');
-        opt.value = legacy; opt.textContent = c.cam_width + ' × ' + c.cam_height;
+        opt.value = legacy; opt.textContent = c.cam_width + ' x ' + c.cam_height;
         resEl.appendChild(opt);
         resEl.value = legacy;
       }
     }
-    // Point select
     const sel = q('point');
     if (sel && c.point) {
       if (![...sel.options].some(o => o.value === c.point)) {
@@ -1031,11 +968,9 @@ async function loadConfig() {
       }
       sel.value = c.point;
     }
-    // Camera select: store saved for later enumeration
     const camSel = q('camera_id');
     if (camSel && c.camera_id !== undefined) {
       camSel.dataset.saved = c.camera_id;
-      // try now (may already be populated)
       if ([...camSel.options].some(o => o.value === String(c.camera_id))) {
         camSel.value = String(c.camera_id);
       }
@@ -1062,7 +997,6 @@ async function fetchPoints() {
       sel.appendChild(opt);
     });
     if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
-    // auto-fill min/max value from selected point
     fillPointValues();
     toast('[OK] ' + r.length + ' points');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
@@ -1080,11 +1014,10 @@ function fillPointValues() {
 async function autoCalibrate() {
   const btn = q('btn-auto-cal');
   btn.disabled = true;
-  btn.textContent = '⟲ ...';
+  btn.textContent = '...';
   const form = new FormData();
   try {
     if (cameraMode === 'client') {
-      // Capture frame from client video
       const video = q('feed-video');
       if (!video || !video.videoWidth) throw new Error('No client video frame');
       const c = document.createElement('canvas');
@@ -1100,19 +1033,19 @@ async function autoCalibrate() {
     const r = await fetch(API + '/api/auto-calibrate', { method: 'POST', body: form });
     if (!r.ok) throw new Error(await r.text());
     const result = await r.json();
-    if (result.error) { toast('[FAIL] ' + result.error, 'error'); btn.disabled = false; btn.textContent = '⟲ Auto-Cal'; return; }
+    if (result.error) { toast('[FAIL] ' + result.error, 'error'); btn.disabled = false; btn.textContent = 'Auto-Cal'; return; }
     q('min_angle').value = result.min_angle;
     q('max_angle').value = result.max_angle;
-    toast('[OK] Angles: ' + result.min_angle + '° / ' + result.max_angle + '°');
+    toast('[OK] Angles: ' + result.min_angle + ' deg / ' + result.max_angle + ' deg');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
   btn.disabled = false;
-  btn.textContent = '⟲ Auto-Cal';
+  btn.textContent = 'Auto-Cal';
 }
 
 async function manualCalibrate() {
   const btn = q('btn-manual-cal');
   btn.disabled = true;
-  btn.textContent = '⟐ ...';
+  btn.textContent = '...';
   try {
     let result;
     let captureBlob = null;
@@ -1135,7 +1068,6 @@ async function manualCalibrate() {
       if (!r.ok) throw new Error(await r.text());
       result = await r.json();
     } else {
-      // Edge cam: capture frame from MJPEG img element
       const img = q('feed-stream');
       if (!img || !img.complete || !img.naturalWidth) throw new Error('No edge stream frame');
       const c = document.createElement('canvas');
@@ -1155,10 +1087,10 @@ async function manualCalibrate() {
       result = await r.json();
     }
 
-    if (result.error) { toast('[FAIL] ' + result.error, 'error'); btn.disabled = false; btn.textContent = '⟐ Manual Cal'; return; }
+    if (result.error) { toast('[FAIL] ' + result.error, 'error'); btn.disabled = false; btn.textContent = 'Manual Cal'; return; }
 
     const ctr = result.center;
-    if (!ctr || ctr.x === undefined) { toast('[FAIL] No gauge center detected', 'error'); btn.disabled = false; btn.textContent = '⟐ Manual Cal'; return; }
+    if (!ctr || ctr.x === undefined) { toast('[FAIL] No gauge center detected', 'error'); btn.disabled = false; btn.textContent = 'Manual Cal'; return; }
 
     calCenter = ctr;
     calImageW = result.w || 640;
@@ -1167,7 +1099,6 @@ async function manualCalibrate() {
     calMinAngle = null;
     calMaxAngle = null;
 
-    // Stop stream, show snapshot
     if (detectEnabled) toggleDetect();
     streamActive = false;
     if (cameraMode === 'client' && clientStream) {
@@ -1176,24 +1107,21 @@ async function manualCalibrate() {
     }
     q('feed-video').style.display = 'none';
     q('feed-stream').style.display = 'none';
-    q('btn-stream').textContent = '▶ Start';
+    q('btn-stream').textContent = 'Start';
     q('btn-stream').className = 'btn btn-sm btn-green';
 
-    // Show annotated image
     q('feed-stream').src = 'data:image/jpeg;base64,' + result.annotated_image;
     q('feed-stream').style.display = 'block';
     q('feed-placeholder').style.display = 'none';
 
-    // Setup canvas
     const body = q('feed-body');
     const canvas = q('feed-canvas');
     canvas.width = body.clientWidth;
     canvas.height = body.clientHeight;
 
-    // Enable cal mode
     q('feed-body').classList.add('cal-mode');
     calState = 'awaiting-min';
-    q('cal-instruct').textContent = 'ⓘ Tap to mark MIN angle start';
+    q('cal-instruct').textContent = 'Tap to mark MIN angle start';
     q('cal-instruct').style.display = 'block';
     q('cal-actions').classList.remove('show');
 
@@ -1201,7 +1129,7 @@ async function manualCalibrate() {
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 
   btn.disabled = false;
-  btn.textContent = '⟐ Manual Cal';
+  btn.textContent = 'Manual Cal';
 }
 
 function onCalCanvasClick(e) {
@@ -1226,13 +1154,13 @@ function onCalCanvasClick(e) {
   if (calState === 'awaiting-min') {
     calMinAngle = angle;
     calState = 'awaiting-max';
-    q('cal-instruct').textContent = 'ⓘ Tap to mark MAX angle end';
+    q('cal-instruct').textContent = 'Tap to mark MAX angle end';
     drawCalMarkers();
   } else if (calState === 'awaiting-max') {
     if (calMinAngle !== null && Math.abs(angle - calMinAngle) < 3) { toast('[WARN] Choose different position', 'error'); return; }
     calMaxAngle = angle;
     calState = 'done';
-    q('cal-instruct').textContent = '✓ MIN ' + calMinAngle.toFixed(1) + '° · MAX ' + calMaxAngle.toFixed(1) + '°';
+    q('cal-instruct').textContent = 'MIN ' + calMinAngle.toFixed(1) + ' deg / MAX ' + calMaxAngle.toFixed(1) + ' deg';
     q('cal-actions').classList.add('show');
     drawCalMarkers();
   }
@@ -1252,7 +1180,6 @@ function drawCalMarkers() {
   const ctrY = lb.offY + calCenter.y * lb.scaleY;
   const maxLine = Math.min(canvas.width, canvas.height) * 0.38;
 
-  // Center dot
   ctx.beginPath();
   ctx.arc(ctrX, ctrY, 4, 0, Math.PI * 2);
   ctx.fillStyle = '#f0b429';
@@ -1276,7 +1203,7 @@ function drawCalMarkers() {
     ctx.fill();
     ctx.fillStyle = color;
     ctx.font = '11px DM Mono, monospace';
-    ctx.fillText(label + ' ' + angle.toFixed(1) + '°', ex + 8, ey + 4);
+    ctx.fillText(label + ' ' + angle.toFixed(1) + ' deg', ex + 8, ey + 4);
   }
 
   if (calMinAngle !== null) drawMarker(calMinAngle, '#22c55e', 'MIN');
@@ -1325,9 +1252,8 @@ async function applyCalibration() {
   if (calMinAngle === null || calMaxAngle === null) return;
   q('min_angle').value = calMinAngle.toFixed(1);
   q('max_angle').value = calMaxAngle.toFixed(1);
-  toast('[OK] Angles set: ' + calMinAngle.toFixed(1) + '° / ' + calMaxAngle.toFixed(1) + '°');
+  toast('[OK] Angles set: ' + calMinAngle.toFixed(1) + ' deg / ' + calMaxAngle.toFixed(1) + ' deg');
 
-  // Learn optimal params for auto-cal
   if (calImageBlob && calCenter) {
     try {
       const form = new FormData();
@@ -1359,45 +1285,7 @@ async function saveConfig() {
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
 
-async function testCapture() {
-  try {
-    if (cameraMode === 'client') {
-      // Capture from client video, send to /detect endpoint
-      const video = q('feed-video');
-      if (!video || !video.videoWidth) { toast('[FAIL] No client video frame available', 'error'); return; }
-      const c = document.createElement('canvas');
-      c.width = video.videoWidth;
-      c.height = video.videoHeight;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(video, 0, 0);
-      const blob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.85));
-      const form = new FormData();
-      form.append('image', blob, 'frame.jpg');
-      ['min_angle','max_angle','min_value','max_value','center_offset_y',
-       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
-        form.append(id, q(id).value));
-      form.append('need_annotation', 'true');
-      const r = await fetch(API + '/detect', { method: 'POST', body: form });
-      if (!r.ok) throw new Error(await r.text());
-      const result = await r.json();
-      if (result.error) { toast('[FAIL] ' + result.error, 'error'); return; }
-      showResult(result);
-      toast('[OK] Read: ' + result.value + ' at ' + result.angle + '°');
-      return;
-    }
-    // Edge cam: existing behavior
-    const card = q('result-card');
-    card.style.display = 'none';
-    q('result-summary').textContent = '';
-    const r = await api('POST', '/api/test-capture');
-    if (r.error) { toast('[FAIL] ' + r.error, 'error'); return; }
-    showResult(r);
-    toast('[OK] Read: ' + r.value + ' at ' + r.angle + '°');
-  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
-}
-
 // === Version & Update ===
-
 async function fetchVersion() {
   try {
     const v = await api('GET', '/api/version');
@@ -1408,7 +1296,7 @@ async function fetchVersion() {
 async function runUpdate() {
   const btn = q('btn-update');
   btn.disabled = true;
-  btn.textContent = '↻ ...';
+  btn.textContent = '...';
   try {
     const r = await fetch(API + '/api/update', { method: 'POST' });
     const result = await r.json();
@@ -1421,8 +1309,7 @@ async function runUpdate() {
   } catch(e) {
     toast('[FAIL] ' + e.message, 'error');
   }
-  // reconnect after restart
-  setTimeout(() => { btn.disabled = false; btn.textContent = '↻ Update'; checkHealth(); fetchVersion(); }, 5000);
+  setTimeout(() => { btn.disabled = false; btn.textContent = 'Update'; checkHealth(); fetchVersion(); }, 5000);
 }
 
 // === Init ===
