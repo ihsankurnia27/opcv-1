@@ -67,19 +67,24 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 
-# --- Camera helpers ---
+# --- Camera with background reader ---
+# V4L2 on Orange Pi locks device exclusively. Single background thread
+# keeps camera open and writes frames to a shared buffer. All endpoints
+# (stream, detect, test-capture) read from the buffer only.
 
-# Shared frame buffer: camera_id -> {"frame": ndarray, "ts": time}
-# Stream writes latest frame here; detect/test-capture read from buffer
-_frame_buffer = {}
+_frame_buffer = {}         # camera_id -> {"frame": ndarray, "ts": float}
 _frame_buffer_lock = threading.Lock()
+_bg_reader = None
+_bg_reader_lock = threading.Lock()
+_bg_stop = threading.Event()
+
 
 def _probe_native_resolution(camera_id):
-    """Open camera, set ultra-high res, read clamped max from driver."""
     try:
         cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
         if not cap.isOpened():
             return 640, 480
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 10000)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 10000)
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -91,9 +96,7 @@ def _probe_native_resolution(camera_id):
 
 
 def _enumerate_cameras(max_check=8):
-    """List available video device paths and open-able indices."""
     devices = []
-    # check /dev/video* style
     for path in sorted(glob.glob("/dev/video*")):
         m = re.search(r'/dev/video(\d+)', path)
         if not m:
@@ -105,17 +108,14 @@ def _enumerate_cameras(max_check=8):
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap.release()
             mw, mh = _probe_native_resolution(idx)
-            label = f"Video {idx}"
-            devices.append({"id": idx, "path": path, "label": label,
+            devices.append({"id": idx, "path": path, "label": f"Video {idx}",
                             "width": w, "height": h,
                             "max_width": mw, "max_height": mh})
-    # also probe plain indices 0..max_check not found above
     found_ids = {d["id"] for d in devices}
     for idx in range(max_check):
         if idx in found_ids:
             continue
         path = f"/dev/video{idx}"
-        # skip if device node doesn't exist (avoids hanging)
         if not os.path.exists(path):
             continue
         cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
@@ -132,10 +132,8 @@ def _enumerate_cameras(max_check=8):
 
 @app.get("/api/cameras")
 def list_cameras():
-    """Enumerate available video devices."""
     devices = _enumerate_cameras()
     if not devices:
-        # fallback: include the configured default
         cfg = load_config()
         cam_id = int(cfg.get("camera_id", 0))
         mw, mh = _probe_native_resolution(cam_id)
@@ -146,58 +144,77 @@ def list_cameras():
     return devices
 
 
-def _get_capture(camera_id, width=None, height=None):
-    cv2.destroyAllWindows()
+# --- Background reader thread ---
+
+def _start_reader(camera_id, width, height, use_mjpeg):
+    global _bg_reader
+    with _bg_reader_lock:
+        if _bg_reader is not None and _bg_reader.is_alive():
+            return  # already running for this camera
+        _bg_stop.clear()
+        _bg_reader = threading.Thread(
+            target=_reader_loop,
+            args=(camera_id, width, height, use_mjpeg),
+            daemon=True,
+        )
+        _bg_reader.start()
+
+
+def _reader_loop(camera_id, width, height, use_mjpeg):
+    """Single background loop — owns camera. Writes frames to buffer."""
     cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
     if not cap.isOpened():
-        return None
-    # Try MJPEG mode first, fall back to YUYV
-    if not cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG')):
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+        return
+    if use_mjpeg:
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        cap.set(cv2.CAP_PROP_FPS, 30)
     if width and height:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
-    cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    return cap
-
-
-def _read_frame(cap):
-    """Read a frame, return None on failure."""
-    for _ in range(3):  # retry a few times
-        ret, frame = cap.read()
-        if ret and frame is not None and frame.size > 0:
-            return frame
-    return None
-
-
-def _generate_mjpeg(camera_id, width=None, height=None):
-    """Generator that yields MJPEG frames from camera_id."""
-    cap = _get_capture(camera_id, width, height)
-    if cap is None:
-        return
     try:
-        while True:
-            frame = _read_frame(cap)
-            if frame is None:
-                continue
-            # write to shared buffer for detect endpoints
-            with _frame_buffer_lock:
-                _frame_buffer[camera_id] = {"frame": frame.copy(), "ts": time.time()}
-            _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
-            yield (b"--frame\r\n"
-                   b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
-    except GeneratorExit:
-        pass
+        while not _bg_stop.is_set():
+            ret, frame = cap.read()
+            if ret and frame is not None and frame.size > 0:
+                with _frame_buffer_lock:
+                    _frame_buffer[camera_id] = {"frame": frame, "ts": time.time()}
+            else:
+                time.sleep(0.01)
     finally:
         cap.release()
         with _frame_buffer_lock:
             _frame_buffer.pop(camera_id, None)
 
 
+def _get_frame(camera_id):
+    """Get latest frame from shared buffer. Never opens camera directly."""
+    with _frame_buffer_lock:
+        buf = _frame_buffer.get(camera_id)
+    if buf is not None and (time.time() - buf["ts"]) < 5.0:
+        return buf["frame"]
+    return None
+
+
+# --- MJPEG stream generator ---
+
+def _generate_mjpeg(camera_id, width=None, height=None):
+    _start_reader(camera_id, width, height, use_mjpeg=True)
+    try:
+        while True:
+            with _frame_buffer_lock:
+                buf = _frame_buffer.get(camera_id)
+            if buf is not None:
+                _, jpeg = cv2.imencode(".jpg", buf["frame"], [cv2.IMWRITE_JPEG_QUALITY, 50])
+                yield (b"--frame\r\n"
+                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
+            else:
+                time.sleep(0.05)
+    except GeneratorExit:
+        pass
+
+
 @app.get("/api/stream")
 def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)):
-    """MJPEG stream from a camera. w=0/h=0 → auto-detect native resolution."""
     if w <= 0 or h <= 0:
         w, h = _probe_native_resolution(camera_id)
     return StreamingResponse(
@@ -206,31 +223,9 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
     )
 
 
-def _get_fresh_frame(camera_id):
-    """Get latest frame from stream buffer, or capture directly."""
-    # try buffer first (stream has camera open)
-    with _frame_buffer_lock:
-        buf = _frame_buffer.get(camera_id)
-    if buf is not None and (time.time() - buf["ts"]) < 5.0:
-        return buf["frame"]
-    # no buffer — capture directly
-    cap = _get_capture(camera_id)
-    if cap is None:
-        return None
-    try:
-        return _read_frame(cap)
-    finally:
-        cap.release()
+# --- Detection helpers ---
 
-
-@app.post("/api/detect-frame")
-def detect_frame(camera_id: int = Form(0)):
-    """Capture a single frame from camera, run detection, return annotated b64."""
-    frame = _get_fresh_frame(camera_id)
-    if frame is None:
-        raise HTTPException(500, "failed to capture frame")
-
-    cfg = load_config()
+def _run_detection(frame, cfg):
     center = find_gauge_center(frame)
     if center is None:
         return {"error": "could not find gauge center"}
@@ -249,6 +244,7 @@ def detect_frame(camera_id: int = Form(0)):
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
     new_range = max_v - min_v
+
     if min_a <= max_a:
         old_range = max_a - min_a
         value = ((angle_deg - min_a) * new_range) / old_range + min_v if old_range != 0 else min_v
@@ -264,10 +260,9 @@ def detect_frame(camera_id: int = Form(0)):
             value = (needle_pos * new_range) / full_range + min_v
     value = max(min_v, min(max_v, value))
 
-    cfg_dict = cfg
     annotated = draw_needle(frame.copy(), cx, cy, radius, angle_deg,
-                            inner_ratio=float(cfg_dict["inner_ratio"]),
-                            outer_ratio=float(cfg_dict["outer_ratio"]),
+                            inner_ratio=float(cfg["inner_ratio"]),
+                            outer_ratio=float(cfg["outer_ratio"]),
                             min_angle=min_a, max_angle=max_a)
     _, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
     annotated_b64 = base64.b64encode(buffer).decode("utf-8")
@@ -283,12 +278,23 @@ def detect_frame(camera_id: int = Form(0)):
     }
 
 
+@app.post("/api/detect-frame")
+def detect_frame(camera_id: int = Form(0)):
+    """Capture a single frame from camera, run detection, return annotated b64."""
+    cfg = load_config()
+    frame = _get_frame(camera_id)
+    if frame is None:
+        raise HTTPException(500, "failed to capture frame — stream not active?")
+    result = _run_detection(frame, cfg)
+    if "error" in result:
+        return result
+    return result
+
+
 # --- Auto-calibrate ---
 
 @app.post("/api/auto-calibrate")
 async def auto_calibrate(camera_id: int = Form(0), image: UploadFile = File(None)):
-    """Detect scale tick-mark gap. Uses camera_id for edge cam, or uploaded image
-    for client cam. Returns estimated min/max angles."""
     cfg = load_config()
     if image:
         contents = await image.read()
@@ -297,9 +303,9 @@ async def auto_calibrate(camera_id: int = Form(0), image: UploadFile = File(None
         if frame is None:
             raise HTTPException(500, "failed to decode uploaded image")
     else:
-        frame = _get_fresh_frame(camera_id)
+        frame = _get_frame(camera_id)
         if frame is None:
-            raise HTTPException(500, "failed to open camera")
+            raise HTTPException(500, "failed to get frame from stream")
 
     center = find_gauge_center(frame)
     if center is None:
@@ -308,7 +314,6 @@ async def auto_calibrate(camera_id: int = Form(0), image: UploadFile = File(None
     cx, cy, radius = center
     point_name = cfg.get("point", "")
 
-    # Check for learned params for this point
     learned = cfg.get("learned_cal", {}).get(point_name, {})
     vr = learned.get("variance_ratio", 0.25)
     mg = learned.get("min_gap_deg", 20)
@@ -342,12 +347,6 @@ async def learn_calibration(
     max_angle: float = Form(...),
     point: str = Form(""),
 ):
-    """Learn optimal detection params from user-indicated min/max angles.
-
-    Takes the same image and center used during Manual Cal, extracts the
-    radial variance profile, computes optimal variance_ratio for future
-    auto-calibration of this gauge point. Stores per-point params in config.
-    """
     cfg = load_config()
     contents = await image.read()
     np_arr = np.frombuffer(contents, np.uint8)
@@ -401,7 +400,6 @@ def update_config(body: dict):
 
 @app.get("/api/points")
 def proxy_points():
-    """Proxy: fetch points list from server API."""
     cfg = load_config()
     server_url = cfg.get("server_api_url", "")
     if not server_url:
@@ -427,64 +425,15 @@ def proxy_points():
 
 @app.post("/api/test-capture")
 def test_capture():
-    """Capture one frame from camera, detect, return result + annotated b64."""
     cfg = load_config()
     cam_id = int(cfg.get("camera_id", 0))
-    frame = _get_fresh_frame(cam_id)
+    frame = _get_frame(cam_id)
     if frame is None:
-        raise HTTPException(500, "failed to capture frame")
-
-
-    center = find_gauge_center(frame)
-    if center is None:
-        return {"error": "could not find gauge center"}
-
-    cx, cy, radius = center
-    cy += int(cfg["center_offset_y"])
-    angle_deg = find_needle_angle(
-        frame, cx, cy, radius,
-        inner_ratio=float(cfg["inner_ratio"]),
-        outer_ratio=float(cfg["outer_ratio"]),
-        blur_kernel=int(cfg["blur_kernel"]),
-        threshold_block=int(cfg["threshold_block"]),
-        threshold_c=int(cfg["threshold_c"]),
-    )
-
-    # map angle -> value
-    min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
-    min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
-    new_range = max_v - min_v
-    if min_a <= max_a:
-        old_range = max_a - min_a
-        value = ((angle_deg - min_a) * new_range) / old_range + min_v if old_range != 0 else min_v
-    else:
-        full_range = (360 - min_a) + max_a
-        if full_range == 0:
-            value = min_v
-        else:
-            if angle_deg >= min_a:
-                needle_pos = angle_deg - min_a
-            else:
-                needle_pos = (360 - min_a) + angle_deg
-            value = (needle_pos * new_range) / full_range + min_v
-    value = max(min_v, min(max_v, value))
-
-    annotated = draw_needle(frame.copy(), cx, cy, radius, angle_deg,
-                            inner_ratio=float(cfg["inner_ratio"]),
-                            outer_ratio=float(cfg["outer_ratio"]),
-                            min_angle=min_a, max_angle=max_a)
-    _, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    annotated_b64 = base64.b64encode(buffer).decode("utf-8")
-
-    h, w = frame.shape[:2]
-    return {
-        "value": round(value, 2),
-        "angle": round(angle_deg, 2),
-        "center": {"x": cx, "y": cy, "radius": radius},
-        "annotated_image": annotated_b64,
-        "error": None,
-        "w": w, "h": h,
-    }
+        raise HTTPException(500, "failed to capture frame — start stream first")
+    result = _run_detection(frame, cfg)
+    if "error" in result:
+        return result
+    return result
 
 
 # --- Detect endpoint (same, for external callers) ---
@@ -569,7 +518,6 @@ COMPOSE_FILE = "/repo/edge/docker-compose.yml"
 
 @app.get("/api/version")
 def get_version():
-    """Return current version string from version.txt."""
     version = "unknown"
     if os.path.exists(VERSION_PATH):
         with open(VERSION_PATH) as f:
@@ -579,14 +527,6 @@ def get_version():
 
 @app.post("/api/update")
 async def run_update():
-    """Git pull + docker compose rebuild. Designed for Docker-socket access.
-
-    Requires:
-      - /var/run/docker.sock mounted into container
-      - /root/opcv-1 mounted at /repo
-
-    Returns build log. Container will restart after compose up -d.
-    """
     import subprocess as sp
     logs = []
     def run(cmd, cwd=None):
@@ -607,11 +547,8 @@ async def run_update():
     if not os.path.exists("/var/run/docker.sock"):
         return {"status": "error", "log": "Docker socket not mounted", "logs": logs}
 
-    # Step 1: git fetch + reset — safe even on dirty tree
     run(["git", "fetch", "origin"], cwd=REPO_PATH)
     run(["git", "reset", "--hard", "origin/main"], cwd=REPO_PATH)
-
-    # Step 2: docker compose rebuild
     ok = run(["docker", "compose", "-f", COMPOSE_FILE, "up", "-d", "--build"])
 
     return {
