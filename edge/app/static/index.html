@@ -499,7 +499,8 @@ input[type="password"] { letter-spacing: .3em; }
 const API = '';
 let cameraMode = 'edge';
 let streamActive = false;
-let detectEnabled = false;
+let streamDetectActive = false;
+let streamDetectTimer = null;
 let clientStream = null;
 let calState = 'idle';
 let calMinAngle = 0;
@@ -605,9 +606,9 @@ async function toggleStream() {
 }
 
 function stopStream() {
-  if (detectEnabled) {
-    stopDetectLoop();
-    detectEnabled = false;
+  if (streamDetectActive) {
+    stopStreamDetection();
+    streamDetectActive = false;
     q('btn-detect').textContent = 'Detect';
     q('btn-detect').className = 'btn btn-sm';
   }
@@ -648,7 +649,7 @@ function startEdgeStream() {
   streamActive = true;
   q('btn-stream').textContent = 'Stop';
   q('btn-stream').className = 'btn btn-sm btn-red';
-  if (detectEnabled) startDetectLoop();
+  if (streamDetectActive) startStreamDetection();
 }
 
 async function startClientStream() {
@@ -683,7 +684,7 @@ async function startClientStream() {
     q('btn-stream').textContent = 'Stop';
     q('btn-stream').className = 'btn btn-sm btn-red';
     updateCanvasSize();
-    if (detectEnabled) startDetectLoop();
+    if (streamDetectActive) startStreamDetection();
   } catch(e) {
     if (e.name === 'NotAllowedError') {
       toast('[FAIL] Camera permission denied', 'error');
@@ -719,16 +720,16 @@ function resetHUD() {
 
 // === Detect toggle ===
 function toggleDetect() {
-  detectEnabled = !detectEnabled;
+  streamDetectActive = !streamDetectActive;
   const btn = q('btn-detect');
-  if (detectEnabled) {
+  if (streamDetectActive) {
     btn.textContent = 'Stop';
     btn.className = 'btn btn-sm btn-cyan';
     q('hud-status').textContent = 'Active';
     q('hud-status').className = 'hud-value cyan';
-    startDetectLoop();
+    startStreamDetection();
   } else {
-    stopDetectLoop();
+    stopStreamDetection();
     btn.textContent = 'Detect';
     btn.className = 'btn btn-sm';
     q('hud-status').textContent = 'Idle';
@@ -737,14 +738,27 @@ function toggleDetect() {
   }
 }
 
-function startDetectLoop() {
-  stopDetectLoop();
-  detectEnabled = true;
-  loopOneShot();
+async function startStreamDetection() {
+  // Send current form params as detect config for inline detection in reader loop
+  const cfg = {};
+  ['min_angle','max_angle','min_value','max_value','center_offset_y',
+   'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+    cfg[id] = q(id).value);
+  try {
+    await fetch(API + '/api/stream-detect-config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg),
+    });
+  } catch(e) { /* ignore */ }
+  pollStreamStatus();
 }
 
-function stopDetectLoop() {
-  detectEnabled = false;
+function stopStreamDetection() {
+  streamDetectActive = false;
+  if (streamDetectTimer) { clearTimeout(streamDetectTimer); streamDetectTimer = null; }
+  try {
+    fetch(API + '/api/stream-detect-config', { method: 'DELETE' });
+  } catch(e) { /* ignore */ }
 }
 
 async function callOneShot() {
@@ -757,128 +771,25 @@ async function callOneShot() {
   return r.json();
 }
 
-async function loopOneShot() {
-  if (!detectEnabled) return;
+async function pollStreamStatus() {
+  if (!streamDetectActive) return;
   try {
-    const r = await callOneShot();
-    if (!r.error) {
-      q('hud-value').textContent = r.value;
-      q('hud-value').className = 'hud-value amber';
-      q('hud-angle').textContent = r.angle + ' deg';
-      q('hud-angle').className = 'hud-value cyan';
-      const ctr = r.center || {};
-      q('hud-center').textContent = ctr.x !== undefined ? ctr.x + ',' + ctr.y : '--';
-      q('hud-status').textContent = 'Detected';
-      q('hud-status').className = 'hud-value green';
-      drawOverlay(r);
+    const r = await fetch(API + '/api/stream-status');
+    if (r.ok) {
+      const d = await r.json();
+      if (d && d.value !== null && d.value !== undefined) {
+        q('hud-value').textContent = d.value;
+        q('hud-value').className = 'hud-value amber';
+        q('hud-angle').textContent = d.angle + ' deg';
+        q('hud-angle').className = 'hud-value cyan';
+        const ctr = d.center || {};
+        q('hud-center').textContent = ctr.x !== undefined ? ctr.x + ',' + ctr.y : '--';
+        q('hud-status').textContent = 'Detected';
+        q('hud-status').className = 'hud-value green';
+      }
     }
   } catch(e) { /* ignore */ }
-  if (detectEnabled) setTimeout(loopOneShot, 100);
-}
-
-// === Overlay drawing ===
-function drawOverlay(result) {
-  const canvas = q('feed-canvas');
-  const body = q('feed-body');
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  canvas.width = body.clientWidth;
-  canvas.height = body.clientHeight;
-
-  const ctr = result.center;
-  if (!ctr || ctr.x === undefined) return;
-
-  const img = q('feed-stream');
-  const video = q('feed-video');
-  const media = img.style.display !== 'none' ? img : video;
-  let mediaW, mediaH;
-  if (media.tagName === 'VIDEO') {
-    mediaW = video.videoWidth || 640;
-    mediaH = video.videoHeight || 480;
-  } else {
-    mediaW = result.w || 640;
-    mediaH = result.h || 480;
-  }
-  const contW = body.clientWidth;
-  const contH = body.clientHeight;
-  const imgAspect = mediaW / mediaH;
-  const contAspect = contW / contH;
-  let renderW, renderH, offX, offY;
-  if (imgAspect > contAspect) {
-    renderW = contW;
-    renderH = contW / imgAspect;
-    offX = 0;
-    offY = (contH - renderH) / 2;
-  } else {
-    renderH = contH;
-    renderW = contH * imgAspect;
-    offX = (contW - renderW) / 2;
-    offY = 0;
-  }
-  const scaleX = renderW / mediaW;
-  const scaleY = renderH / mediaH;
-
-  const cx = offX + ctr.x * scaleX;
-  const cy = offY + ctr.y * scaleY;
-  const r = (ctr.radius || 100) * Math.min(scaleX, scaleY);
-  const rNeedle = r * 0.85;
-  const rRef = r * 0.7;
-
-  const cfg = getFormValues();
-  const innerRatio = parseFloat(cfg.inner_ratio) || 0.6;
-  const outerRatio = parseFloat(cfg.outer_ratio) || 0.8;
-  const rInner = r * innerRatio;
-  const rOuter = r * outerRatio;
-  ctx.beginPath();
-  ctx.arc(cx, cy, rInner, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(240,180,41,.35)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 4]);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(240,180,41,.35)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 4]);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(240,180,41,.25)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-  ctx.fillStyle = '#f0b429';
-  ctx.fill();
-
-  const angleRad = result.angle * Math.PI / 180;
-  const nx = cx + rNeedle * Math.cos(angleRad);
-  const ny = cy + rNeedle * Math.sin(angleRad);
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(nx, ny);
-  ctx.strokeStyle = '#ef4444';
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-
-  const minA = parseFloat(cfg.min_angle) || 0;
-  const maxA = parseFloat(cfg.max_angle) || 0;
-  for (const a of [minA, maxA]) {
-    const aRad = a * Math.PI / 180;
-    const x2 = cx + rRef * Math.cos(aRad);
-    const y2 = cy + rRef * Math.sin(aRad);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(x2, y2);
-    ctx.strokeStyle = 'rgba(6,182,212,.5)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+  if (streamDetectActive) streamDetectTimer = setTimeout(pollStreamStatus, 200);
 }
 
 // === Result panel ===
@@ -1088,7 +999,7 @@ async function manualCalibrate() {
     calMinAngle = null;
     calMaxAngle = null;
 
-    if (detectEnabled) stopDetectLoop();
+    if (streamDetectActive) stopStreamDetection();
     streamActive = false;
     if (cameraMode === 'client' && clientStream) {
       clientStream.getTracks().forEach(t => t.stop());

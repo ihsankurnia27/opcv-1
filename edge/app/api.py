@@ -75,8 +75,12 @@ _bg_reader = None
 _bg_reader_lock = threading.Lock()
 _bg_stop = threading.Event()
 
+_detect_config = {}
+_detect_config_lock = threading.Lock()
+_stream_jpeg = None
+_stream_detect = None
+
 _DETECT_MAX_W = 640
-_STREAM_MAX_W = 640
 
 
 def _probe_native_resolution(camera_id):
@@ -161,34 +165,57 @@ def _start_reader(camera_id, width, height):
 
 
 def _reader_loop(camera_id, width, height):
+    global _stream_jpeg, _stream_detect
     cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
     if not cap.isOpened():
         return
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
     cap.set(cv2.CAP_PROP_FPS, 30)
-    if width and height:
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
+    # Cap capture to stream max for performance
+    if width <= 0 or height <= 0:
+        width, height = _DETECT_MAX_W, int(_DETECT_MAX_W * 3 / 4)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    last_detect = 0
     try:
         while not _bg_stop.is_set():
             ret, frame = cap.read()
             if ret and frame is not None and frame.size > 0:
-                h, w = frame.shape[:2]
-                if max(w, h) > _STREAM_MAX_W:
-                    scale = _STREAM_MAX_W / max(w, h)
-                    small = cv2.resize(frame, (int(w * scale), int(h * scale)),
-                                       interpolation=cv2.INTER_AREA)
-                else:
-                    small = frame
-                _, jpeg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 50])
+                now = time.time()
+                _, raw_jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
+                raw_jpeg_bytes = raw_jpeg.tobytes()
+
+                if now - last_detect >= 0.2:
+                    with _detect_config_lock:
+                        cfg = _detect_config.copy() if _detect_config else load_config()
+                    if cfg:
+                        result = _run_detection(frame, cfg)
+                        if not result.get("error"):
+                            _stream_detect = result
+                            angle_deg = float(result["angle"])
+                            ctr = result["center"]
+                            annotated = draw_needle(frame.copy(),
+                                                    ctr["x"], ctr["y"], ctr["radius"], angle_deg,
+                                                    inner_ratio=float(cfg["inner_ratio"]),
+                                                    outer_ratio=float(cfg["outer_ratio"]),
+                                                    min_angle=float(cfg["min_angle"]),
+                                                    max_angle=float(cfg["max_angle"]))
+                            _, ann_jpeg = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 50])
+                            _stream_jpeg = ann_jpeg.tobytes()
+                        else:
+                            _stream_detect = result
+                    last_detect = now
+
                 with _frame_buffer_lock:
-                    _frame_buffer[camera_id] = {"frame": frame, "jpeg": jpeg.tobytes(), "ts": time.time()}
-            time.sleep(0.03)
+                    _frame_buffer[camera_id] = {"frame": frame, "jpeg": raw_jpeg_bytes, "ts": now}
+            time.sleep(0.01)
     finally:
         cap.release()
         with _frame_buffer_lock:
             _frame_buffer.pop(camera_id, None)
+        _stream_jpeg = None
+        _stream_detect = None
 
 
 def _get_frame(camera_id):
@@ -205,13 +232,17 @@ def _generate_mjpeg(camera_id, width, height):
     _start_reader(camera_id, width, height)
     try:
         while True:
-            with _frame_buffer_lock:
-                buf = _frame_buffer.get(camera_id)
-            if buf is not None:
+            if _stream_jpeg is not None:
                 yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + buf["jpeg"] + b"\r\n")
+                       b"Content-Type: image/jpeg\r\n\r\n" + _stream_jpeg + b"\r\n")
             else:
-                time.sleep(0.05)
+                with _frame_buffer_lock:
+                    buf = _frame_buffer.get(camera_id)
+                if buf is not None:
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + buf["jpeg"] + b"\r\n")
+                else:
+                    time.sleep(0.05)
     except GeneratorExit:
         pass
 
@@ -224,6 +255,31 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
         _generate_mjpeg(camera_id, w, h),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+@app.post("/api/stream-detect-config")
+def set_stream_detect_config(body: dict):
+    allowed = {"min_value", "max_value", "min_angle", "max_angle",
+               "center_offset_y", "inner_ratio", "outer_ratio",
+               "blur_kernel", "threshold_block", "threshold_c"}
+    with _detect_config_lock:
+        _detect_config.clear()
+        _detect_config.update((k, v) for k, v in body.items() if k in allowed)
+    return {"ok": True}
+
+
+@app.delete("/api/stream-detect-config")
+def clear_stream_detect_config():
+    with _detect_config_lock:
+        _detect_config.clear()
+    return {"ok": True}
+
+
+@app.get("/api/stream-status")
+def stream_status():
+    if _stream_detect is not None:
+        return _stream_detect
+    return {"value": None, "angle": None, "center": None}
 
 
 # --- Detection helpers ---
