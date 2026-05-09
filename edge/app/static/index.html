@@ -635,8 +635,7 @@ function startEdgeStream() {
   const res = q('cam_resolution').value.split('x').map(Number);
   const w = res[0] || 0;
   const h = res[1] || 0;
-  const detectParam = detectEnabled ? '&detect=1' : '';
-  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h + detectParam;
+  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h;
   const img = q('feed-stream');
   q('feed-placeholder').style.display = 'none';
   q('feed-video').style.display = 'none';
@@ -729,37 +728,20 @@ function toggleDetect() {
     q('hud-status').textContent = 'Active';
     q('hud-status').className = 'hud-value cyan';
     startDetectPoll();
-    // restart stream with detect=1
-    if (cameraMode === 'edge' && streamActive) {
-      const camId = q('camera_id').value;
-      const res = q('cam_resolution').value.split('x').map(Number);
-      const w = res[0] || 0;
-      const h = res[1] || 0;
-      q('feed-stream').src = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h + '&detect=1';
-    }
   } else {
     stopDetectPoll();
     btn.textContent = 'Detect';
     btn.className = 'btn btn-sm';
     q('hud-status').textContent = 'Idle';
     q('hud-status').className = 'hud-value';
-    if (cameraMode === 'edge' && streamActive) {
-      const camId = q('camera_id').value;
-      const res = q('cam_resolution').value.split('x').map(Number);
-      const w = res[0] || 0;
-      const h = res[1] || 0;
-      q('feed-stream').src = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h;
-    }
+    hideResult();
   }
-  fetch(API + '/api/detect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({enabled: detectEnabled}) }).catch(() => {});
 }
 
 function startDetectPoll() {
   stopDetectPoll();
-  q('hud-status').textContent = 'Active';
-  q('hud-status').className = 'hud-value cyan';
-  pollResult();
-  detectPollId = setInterval(pollResult, 1000);
+  pollOneShot();
+  detectPollId = setInterval(pollOneShot, 2000);
 }
 
 function stopDetectPoll() {
@@ -769,9 +751,9 @@ function stopDetectPoll() {
   }
 }
 
-async function pollResult() {
+async function pollOneShot() {
   try {
-    const r = await api('GET', '/api/latest-result');
+    const r = await api('POST', '/api/one-shot');
     if (r.error) return;
     q('hud-value').textContent = r.value;
     q('hud-value').className = 'hud-value amber';
@@ -782,7 +764,7 @@ async function pollResult() {
     q('hud-status').textContent = 'Detected';
     q('hud-status').className = 'hud-value green';
     drawOverlay(r);
-  } catch(e) { /* ignore */ }
+  } catch(e) { /* ignore poll errors */ }
 }
 
 // === Overlay drawing ===
