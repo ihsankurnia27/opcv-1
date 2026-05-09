@@ -72,7 +72,7 @@ def save_config(cfg):
 # keeps camera open and writes frames to a shared buffer. All endpoints
 # (stream, detect, test-capture) read from the buffer only.
 
-_frame_buffer = {}         # camera_id -> {"frame": ndarray, "ts": float}
+_frame_buffer = {}         # camera_id -> {"frame": ndarray, "jpeg": bytes, "ts": float}
 _frame_buffer_lock = threading.Lock()
 _bg_reader = None
 _bg_reader_lock = threading.Lock()
@@ -176,9 +176,10 @@ def _reader_loop(camera_id, width, height, use_mjpeg):
         while not _bg_stop.is_set():
             ret, frame = cap.read()
             if ret and frame is not None and frame.size > 0:
+                _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
                 with _frame_buffer_lock:
-                    _frame_buffer[camera_id] = {"frame": frame, "ts": time.time()}
-            time.sleep(0.01)
+                    _frame_buffer[camera_id] = {"frame": frame, "jpeg": jpeg.tobytes(), "ts": time.time()}
+            time.sleep(0.03)
     finally:
         cap.release()
         with _frame_buffer_lock:
@@ -203,9 +204,8 @@ def _generate_mjpeg(camera_id, width=None, height=None):
             with _frame_buffer_lock:
                 buf = _frame_buffer.get(camera_id)
             if buf is not None:
-                _, jpeg = cv2.imencode(".jpg", buf["frame"], [cv2.IMWRITE_JPEG_QUALITY, 50])
                 yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
+                       b"Content-Type: image/jpeg\r\n\r\n" + buf["jpeg"] + b"\r\n")
             else:
                 time.sleep(0.05)
     except GeneratorExit:
