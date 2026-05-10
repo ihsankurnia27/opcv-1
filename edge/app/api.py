@@ -8,6 +8,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from contextlib import asynccontextmanager
 
 import cv2
 import numpy as np
@@ -23,7 +24,16 @@ from gauge_reader.find_needle_radial import find_needle_angle, draw_needle, dete
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/app/config.json")
 
-app = FastAPI(title="Edge Gauge Reader API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Shutdown: stop background reader
+    _bg_stop.set()
+    with _bg_reader_lock:
+        if _bg_reader is not None:
+            _bg_reader.join(timeout=3)
+
+app = FastAPI(title="Edge Gauge Reader API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -84,6 +94,7 @@ _stream_jpeg = None
 _stream_detect = None
 
 _DETECT_MAX_W = 640
+_DETECT_USE_W = 320  # internal detection resolution for speed (4× fewer pixels)
 
 
 def _probe_native_resolution(camera_id):
@@ -309,20 +320,36 @@ def _resize_for_detect(img):
 
 
 def _run_detection(frame, cfg):
-    center = find_gauge_center(frame)
+    # Detect at _DETECT_USE_W for speed, upscale coords to frame resolution
+    h_orig, w_orig = frame.shape[:2]
+    if max(w_orig, h_orig) > _DETECT_USE_W:
+        scale = _DETECT_USE_W / max(w_orig, h_orig)
+        small = cv2.resize(frame, (int(w_orig * scale), int(h_orig * scale)),
+                           interpolation=cv2.INTER_AREA)
+    else:
+        scale = 1.0
+        small = frame
+
+    center = find_gauge_center(small)
     if center is None:
         return {"error": "could not find gauge center"}
 
     cx, cy, radius = center
     cy += int(cfg["center_offset_y"])
     angle_deg = find_needle_angle(
-        frame, cx, cy, radius,
+        small, cx, cy, radius,
         inner_ratio=float(cfg["inner_ratio"]),
         outer_ratio=float(cfg["outer_ratio"]),
         blur_kernel=int(cfg["blur_kernel"]),
         threshold_block=int(cfg["threshold_block"]),
         threshold_c=int(cfg["threshold_c"]),
     )
+
+    # Upscale coords to original frame resolution
+    inv = 1.0 / scale if scale != 1.0 else 1.0
+    cx = int(cx * inv)
+    cy = int(cy * inv)
+    radius = int(radius * inv)
 
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
@@ -341,13 +368,12 @@ def _run_detection(frame, cfg):
     value = ((numer * new_range) / denom + min_v) if denom != 0 else min_v
     value = max(min_v, min(max_v, value))
 
-    h, w = frame.shape[:2]
     return {
         "value": round(value, 2),
         "angle": round(angle_deg, 2),
         "center": {"x": cx, "y": cy, "radius": radius},
         "error": None,
-        "w": w, "h": h,
+        "w": w_orig, "h": h_orig,
     }
 
 
