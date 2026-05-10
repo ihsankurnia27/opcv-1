@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from gauge_reader import angle_to_value
 from gauge_reader.find_gauge_center import find_gauge_center
 from gauge_reader.find_needle_radial import find_needle_angle, draw_needle, detect_scale_range, compute_variance_profile, learn_gap_params
 
@@ -353,20 +354,7 @@ def _run_detection(frame, cfg):
 
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
-    new_range = max_v - min_v
-
-    if min_a <= max_a:
-        denom = max_a - min_a
-        numer = angle_deg - min_a
-    else:
-        denom = (360 - min_a) + max_a
-        if angle_deg >= min_a:
-            numer = angle_deg - min_a
-        else:
-            numer = (360 - min_a) + angle_deg
-
-    value = ((numer * new_range) / denom + min_v) if denom != 0 else min_v
-    value = max(min_v, min(max_v, value))
+    value = angle_to_value(angle_deg, min_a, max_a, min_v, max_v)
 
     return {
         "value": round(value, 2),
@@ -434,12 +422,11 @@ def one_shot(
     if full is None:
         raise HTTPException(500, "no frame — start stream first")
 
-    small, upscale = _resize_for_detect(full)
-    result = _run_detection(small, cfg)
+    result = _run_detection(full, cfg)
     if result.get("error"):
         return result
 
-    return _finalize_detect_result(result, full, upscale, cfg)
+    return _finalize_detect_result(result, full, 1.0, cfg)
 
 
 # --- Auto-calibrate ---
@@ -609,7 +596,6 @@ async def detect(
     if img is None:
         return {"error": "could not decode image"}
 
-    small, upscale = _resize_for_detect(img)
     cfg = {
         "center_offset_y": center_offset_y,
         "inner_ratio": inner_ratio,
@@ -622,11 +608,11 @@ async def detect(
         "min_value": min_value,
         "max_value": max_value,
     }
-    result = _run_detection(small, cfg)
+    result = _run_detection(img, cfg)
     if result.get("error"):
         return result
 
-    return _finalize_detect_result(result, img, upscale, cfg, need_annotation=need_annotation)
+    return _finalize_detect_result(result, img, 1.0, cfg, need_annotation=need_annotation)
 
 
 VERSION_PATH = "/app/version.txt"

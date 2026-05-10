@@ -21,8 +21,10 @@ import numpy as np
 # Make gauge_reader importable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from gauge_reader import angle_to_value
 from gauge_reader.find_gauge_center import find_gauge_center
 from gauge_reader.find_needle_radial import find_needle_angle, draw_needle
+from gauge_reader.value_filter import ValueFilter
 
 
 def load_config(path="config.json"):
@@ -59,53 +61,56 @@ def capture_frame(camera_id=0):
     return frame
 
 
+_DETECT_USE_W = 320  # internal detection resolution, matches api.py
+
+
 def detect_gauge(img, config):
-    center = find_gauge_center(img)
+    # Resize to _DETECT_USE_W for speed, upscale coords after
+    h_orig, w_orig = img.shape[:2]
+    if max(w_orig, h_orig) > _DETECT_USE_W:
+        scale = _DETECT_USE_W / max(w_orig, h_orig)
+        small = cv2.resize(img, (int(w_orig * scale), int(h_orig * scale)),
+                             interpolation=cv2.INTER_AREA)
+    else:
+        scale = 1.0
+        small = img
+
+    center = find_gauge_center(small)
     if center is None:
         return None, "could not find gauge center"
 
     cx, cy, radius = center
     cy += int(config["center_offset_y"])
     angle_deg = find_needle_angle(
-        img, cx, cy, radius,
-        inner_ratio=config["inner_ratio"],
-        outer_ratio=config["outer_ratio"],
-        blur_kernel=config["blur_kernel"],
-        threshold_block=config["threshold_block"],
-        threshold_c=config["threshold_c"],
+        small, cx, cy, radius,
+        inner_ratio=float(config["inner_ratio"]),
+        outer_ratio=float(config["outer_ratio"]),
+        blur_kernel=int(config["blur_kernel"]),
+        threshold_block=int(config["threshold_block"]),
+        threshold_c=int(config["threshold_c"]),
     )
 
-    # map angle to value
-    min_a, max_a = config["min_angle"], config["max_angle"]
-    min_v, max_v = config["min_value"], config["max_value"]
-    new_range = max_v - min_v
+    # Upscale coords to original frame
+    inv = 1.0 / scale if scale != 1.0 else 1.0
+    cx_out = int(cx * inv)
+    cy_out = int(cy * inv)
+    radius_out = int(radius * inv)
 
-    if min_a <= max_a:
-        old_range = max_a - min_a
-        if old_range == 0:
-            value = min_v
-        else:
-            value = ((angle_deg - min_a) * new_range) / old_range + min_v
-    else:
-        full_range = (360 - min_a) + max_a
-        if full_range == 0:
-            value = min_v
-        else:
-            if angle_deg >= min_a:
-                needle_pos = angle_deg - min_a
-            else:
-                needle_pos = (360 - min_a) + angle_deg
-            value = (needle_pos * new_range) / full_range + min_v
-    value = max(min_v, min(max_v, value))
+    value = angle_to_value(angle_deg, float(config["min_angle"]), float(config["max_angle"]),
+                           float(config["min_value"]), float(config["max_value"]))
 
-    annotated = draw_needle(img.copy(), cx, cy, radius, angle_deg)
+    annotated = draw_needle(img.copy(), cx_out, cy_out, radius_out, angle_deg,
+                            inner_ratio=float(config["inner_ratio"]),
+                            outer_ratio=float(config["outer_ratio"]),
+                            min_angle=float(config["min_angle"]),
+                            max_angle=float(config["max_angle"]))
     _, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
     annotated_b64 = base64.b64encode(buffer).decode("utf-8")
 
     return {
         "value": round(value, 2),
         "angle": round(angle_deg, 2),
-        "center": {"x": cx, "y": cy, "radius": radius},
+        "center": {"x": cx_out, "y": cy_out, "radius": radius_out},
         "annotated_image": annotated_b64,
     }, None
 
@@ -132,7 +137,7 @@ def push_to_server(payload, config):
         return None, str(e)
 
 
-def do_reading(config, camera_id=0):
+def do_reading(config, camera_id=0, value_filter=None):
     try:
         frame = capture_frame(camera_id)
     except RuntimeError as e:
@@ -144,9 +149,14 @@ def do_reading(config, camera_id=0):
         print(f"[{time.strftime('%H:%M:%S')}] Detection error: {err}")
         return
 
+    raw_value = result["value"]
+    filtered = value_filter.add(raw_value) if value_filter is not None else raw_value
+    if filtered != raw_value:
+        print(f"[{time.strftime('%H:%M:%S')}] Spike rejected: {raw_value}→{filtered:.2f}")
+
     payload = {
         "point": config["point"],
-        "value": result["value"],
+        "value": round(filtered, 2),
         "angle": result["angle"],
         "annotated_image": result["annotated_image"],
     }
@@ -155,7 +165,7 @@ def do_reading(config, camera_id=0):
     if err:
         print(f"[{time.strftime('%H:%M:%S')}] Push error: {err}")
     else:
-        print(f"[{time.strftime('%H:%M:%S')}] Pushed {config['point']} = {result['value']}  server: {resp.get('status', '?')}")
+        print(f"[{time.strftime('%H:%M:%S')}] Pushed {config['point']} = {payload['value']}  server: {resp.get('status', '?')}")
 
 
 def main():
@@ -175,8 +185,9 @@ def main():
     print(f"  Camera:     /dev/video{args.camera}")
     print()
 
+    vf = ValueFilter()
     while True:
-        do_reading(config, args.camera)
+        do_reading(config, args.camera, value_filter=vf)
         if args.oneshot:
             break
         print(f"  Next reading in {interval}s...")
