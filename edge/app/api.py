@@ -69,7 +69,10 @@ def save_config(cfg):
 # V4L2 on Orange Pi locks device. Single thread captures frames at
 # high speed. Detection is on-demand via /api/one-shot (resized detect).
 
-_frame_buffer = {}         # camera_id -> {"frame": ndarray, "jpeg": bytes, "ts": float}
+_frame_buffer = {}         # camera_id -> {"frame": ndarray, "ts": float}
+
+_raw_jpeg_lock = threading.Lock()
+_raw_jpeg_cache = {}        # camera_id -> bytes (raw JPEG, Q30, cached per capture)
 _frame_buffer_lock = threading.Lock()
 _bg_reader = None
 _bg_reader_lock = threading.Lock()
@@ -183,8 +186,10 @@ def _reader_loop(camera_id, width, height):
             ret, frame = cap.read()
             if ret and frame is not None and frame.size > 0:
                 now = time.time()
-                _, raw_jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 50])
-                raw_jpeg_bytes = raw_jpeg.tobytes()
+
+                # Invalidate raw JPEG cache — stream re-encodes on demand at Q30
+                with _raw_jpeg_lock:
+                    _raw_jpeg_cache[camera_id] = None
 
                 if now - last_detect >= 0.2:
                     with _detect_config_lock:
@@ -208,7 +213,7 @@ def _reader_loop(camera_id, width, height):
                     last_detect = now
 
                 with _frame_buffer_lock:
-                    _frame_buffer[camera_id] = {"frame": frame, "jpeg": raw_jpeg_bytes, "ts": now}
+                    _frame_buffer[camera_id] = {"frame": frame, "ts": now}
             time.sleep(0.01)
     finally:
         cap.release()
@@ -216,6 +221,8 @@ def _reader_loop(camera_id, width, height):
             _frame_buffer.pop(camera_id, None)
         _stream_jpeg = None
         _stream_detect = None
+        with _raw_jpeg_lock:
+            _raw_jpeg_cache.pop(camera_id, None)
 
 
 def _get_frame(camera_id):
@@ -236,11 +243,20 @@ def _generate_mjpeg(camera_id, width, height):
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _stream_jpeg + b"\r\n")
             else:
-                with _frame_buffer_lock:
-                    buf = _frame_buffer.get(camera_id)
-                if buf is not None:
+                # Encode raw frame on demand at Q30, cache between captures
+                with _raw_jpeg_lock:
+                    jpeg_bytes = _raw_jpeg_cache.get(camera_id)
+                if jpeg_bytes is None:
+                    with _frame_buffer_lock:
+                        buf = _frame_buffer.get(camera_id)
+                    if buf is not None:
+                        _, buf2 = cv2.imencode(".jpg", buf["frame"], [cv2.IMWRITE_JPEG_QUALITY, 30])
+                        jpeg_bytes = buf2.tobytes()
+                        with _raw_jpeg_lock:
+                            _raw_jpeg_cache[camera_id] = jpeg_bytes
+                if jpeg_bytes is not None:
                     yield (b"--frame\r\n"
-                           b"Content-Type: image/jpeg\r\n\r\n" + buf["jpeg"] + b"\r\n")
+                           b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
                 else:
                     time.sleep(0.05)
     except GeneratorExit:
