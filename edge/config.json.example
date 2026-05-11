@@ -12,5 +12,8 @@
   "threshold_c": "5",
   "interval_seconds": "3600",
   "camera_id": 0,
-  "cam_resolution": "0x0"
+  "cam_resolution": "0x0",
+  "filter_alpha": 0.15,
+  "filter_max_jump": 1.5,
+  "filter_window": 5
 }

@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gauge_reader import angle_to_value
 from gauge_reader.find_gauge_center import find_gauge_center
 from gauge_reader.find_needle_radial import find_needle_angle, draw_needle, detect_scale_range, compute_variance_profile, learn_gap_params
+from gauge_reader.value_filter import ValueFilter
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/app/config.json")
 
@@ -68,6 +69,9 @@ def load_config():
             defaults.update(json.load(f))
     defaults.setdefault("camera_id", 0)
     defaults.setdefault("cam_resolution", "0x0")
+    defaults.setdefault("filter_alpha", 0.15)
+    defaults.setdefault("filter_max_jump", 1.5)
+    defaults.setdefault("filter_window", 5)
     return defaults
 
 
@@ -93,6 +97,17 @@ _detect_config = {}
 _detect_config_lock = threading.Lock()
 _stream_jpeg = None
 _stream_detect = None
+
+_value_filter_lock = threading.Lock()
+_value_filter = ValueFilter()
+
+def _reinit_filter(cfg):
+    with _value_filter_lock:
+        _value_filter.update_params(
+            alpha=float(cfg.get("filter_alpha", 0.15)),
+            jump=float(cfg.get("filter_max_jump", 1.5)),
+        )
+        _value_filter.median_window_size = int(cfg.get("filter_window", 5))
 
 _DETECT_MAX_W = 640
 _DETECT_USE_W = 320  # internal detection resolution for speed (4× fewer pixels)
@@ -209,6 +224,12 @@ def _reader_loop(camera_id, width, height):
                     if cfg:
                         result = _run_detection(frame, cfg)
                         if not result.get("error"):
+                            # Apply value filter
+                            with _value_filter_lock:
+                                filtered = _value_filter.add(float(result["value"]))
+                            result["raw_value"] = result["value"]
+                            result["value"] = round(filtered, 2)
+                            result["filtered"] = True
                             _stream_detect = result
                             angle_deg = float(result["angle"])
                             ctr = result["center"]
@@ -289,10 +310,15 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
 def set_stream_detect_config(body: dict):
     allowed = {"min_value", "max_value", "min_angle", "max_angle",
                "center_offset_y", "inner_ratio", "outer_ratio",
-               "blur_kernel", "threshold_block", "threshold_c"}
+               "blur_kernel", "threshold_block", "threshold_c",
+               "filter_alpha", "filter_max_jump", "filter_window"}
     with _detect_config_lock:
         _detect_config.clear()
         _detect_config.update((k, v) for k, v in body.items() if k in allowed)
+    # Reinit filter from detect config (falls back to saved config)
+    merged = load_config()
+    merged.update(_detect_config)
+    _reinit_filter(merged)
     return {"ok": True}
 
 
@@ -526,11 +552,13 @@ def update_config(body: dict):
         "center_offset_y", "inner_ratio", "outer_ratio",
         "blur_kernel", "threshold_block", "threshold_c",
         "interval_seconds", "server_api_url", "api_key",
+        "filter_alpha", "filter_max_jump", "filter_window",
     }
     for k, v in body.items():
         if k in allowed:
             cfg[k] = v
     save_config(cfg)
+    _reinit_filter(cfg)
     return {"status": "ok", "config": cfg}
 
 
