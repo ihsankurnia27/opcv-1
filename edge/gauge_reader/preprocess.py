@@ -39,15 +39,16 @@ def subtract_background(gray, ref):
 
 
 def preprocess(img, clahe=True, denoise=True):
-    """Full preprocessing pipeline: BGR → LAB L → CLAHE → back to BGR via merge + bilateral.
+    """Full preprocessing pipeline: BGR → LAB → CLAHE on L → merge back to BGR → bilateral.
 
-    Returns BGR image ready for center/needle detection.
+    Preserves color channels (a, b) from LAB. Returns BGR image ready for center/needle detection.
     """
-    l_channel = to_lab_l_channel(img)
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l_channel = lab[:, :, 0]
     if clahe:
         l_channel = apply_clahe(l_channel)
-    # Merge back to BGR for downstream color-agnostic operations
-    result = cv2.cvtColor(l_channel, cv2.COLOR_GRAY2BGR)
+    lab[:, :, 0] = l_channel
+    result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
     if denoise:
         result = bilateral_denoise(result)
     return result

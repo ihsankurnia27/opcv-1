@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from gauge_reader.preprocess import to_lab_l_channel, apply_clahe, bilateral_denoise
+from gauge_reader.preprocess import to_lab_l_channel, apply_clahe, bilateral_denoise, build_background_model, subtract_background, preprocess
 
 
 def test_to_lab_l_channel_shape():
@@ -35,3 +35,46 @@ def test_bilateral_denoise_preserves_edges():
     edge_result = cv2.Canny(cv2.cvtColor(result, cv2.COLOR_BGR2GRAY), 50, 150).sum()
     # Bilateral should preserve edge structure (edges don't vanish)
     assert edge_result >= edge_original * 0.5
+
+
+def test_build_background_model_empty():
+    assert build_background_model([]) is None
+
+
+def test_build_background_model_computes_median():
+    f1 = np.full((100, 100), 40, dtype=np.uint8)
+    f2 = np.full((100, 100), 80, dtype=np.uint8)
+    f3 = np.full((100, 100), 60, dtype=np.uint8)
+    result = build_background_model([f1, f2, f3])
+    assert result.shape == (100, 100)
+    assert result.dtype == np.uint8
+    assert abs(float(result[50, 50]) - 60) < 5
+
+
+def test_subtract_background_none_ref():
+    gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
+    assert subtract_background(gray, None) is None
+
+
+def test_subtract_background_detects_change():
+    ref = np.full((100, 100), 100, dtype=np.uint8)
+    gray = ref.copy()
+    gray[40:60, 40:60] = 200  # bright patch
+    binary = subtract_background(gray, ref)
+    assert binary is not None
+    assert binary.shape == (100, 100)
+    # Some pixels in the patch region should be 255 (foreground)
+    assert binary[40:60, 40:60].sum() > 0
+
+
+def test_preprocess_pipeline_returns_bgr():
+    img = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+    result = preprocess(img, clahe=True, denoise=True)
+    assert result.shape == img.shape
+    assert result.dtype == np.uint8
+    # With color preservation, channels should not all be identical
+    # (should have some variance between channels from original color)
+    diff_rg = np.abs(result[:, :, 2].astype(float) - result[:, :, 1].astype(float)).mean()
+    diff_gb = np.abs(result[:, :, 1].astype(float) - result[:, :, 0].astype(float)).mean()
+    # At least some channel differences should remain after CLAHE+merge of random input
+    assert diff_rg > 0 or diff_gb > 0, "channels should not be identical after color-preserving preprocess"
