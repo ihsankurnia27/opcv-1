@@ -57,7 +57,7 @@ docker compose up -d
 
 Edge web UI: http://edge-ip (auto-redirects to https://edge-ip:8765)
 
-**Camera**: USB camera is usually `/dev/video1` (not video0). Edit `config.json` → `"camera_id": 1`. Compose mounts `video0/1/2` by default.
+**Camera**: USB camera is usually `/dev/video1` (not video0). Edit `config.json` → `"camera_id"` accordingly. Compose mounts `/dev/video0` by default — add entries for other devices as needed.
 
 ### 4. (Dev) Push a test reading
 
@@ -95,12 +95,14 @@ python push_readings.py --oneshot
 
 ## Gauge Detection Pipeline
 
-1. Center detection (blob detector / HoughCircles)
-2. Optional Gaussian blur + adaptive threshold
-3. Radial sampling — pixel intensity along 360 rays
-4. Darkest ray = needle position
-5. Parabola fit for sub-degree precision
-6. Linear interpolation with wrap-around → value
+1. Center detection (blob detector → HoughCircles fallback)
+2. Frame resize to 320px internally for ~4× faster CV ops
+3. Optional Gaussian blur + adaptive threshold
+4. Radial sampling — pixel intensity along 360 rays
+5. Darkest ray = needle position
+6. Parabola fit for sub-degree precision
+7. Linear interpolation with wrap-around → value
+8. ValueFilter smoothing (median window + EMA + spike rejection)
 
 ## Shift Schedule
 
@@ -135,7 +137,9 @@ python push_readings.py --oneshot
 │   ├── push_readings.py     # Scheduled pusher
 │   ├── nginx/default.conf   # HTTP→HTTPS redirect
 │   ├── app/api.py           # FastAPI endpoints
-│   └── gauge_reader/        # Detection library
+│   ├── app/static/
+│   │   └── index.html    # Config web UI (light theme)
+│   └── gauge_reader/        # Detection library (includes value_filter.py)
 │
 ├── .gitignore
 ├── edge/README.md           # Edge deployment docs
@@ -175,7 +179,6 @@ ssh root@10.8.0.4 "cd /root/opcv-1 && git pull && cd /root/edge && docker compos
 
 - Auth uses plaintext passwords (as-shipped)
 - Edge web UI accessible on port 80 (auto-redirects to 8765 HTTPS)
-- Camera passthrough mounts `/dev/video0`, `/dev/video1`, `/dev/video2` — USB camera on Orange Pi is device 1
 - `gitignore` excludes `config.json` (secrets) — always use `config.json.example` as template
 - WireGuard clients need `PersistentKeepalive = 25` to prevent NAT drop (set on both edge 10.8.0.4 and app server 10.8.0.3)
 - App server (10.8.0.3) needed Docker daemon DNS fix: `daemon.json: {"dns": ["1.1.1.1", "8.8.8.8"]}`
