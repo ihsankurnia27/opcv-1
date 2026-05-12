@@ -20,8 +20,11 @@ from fastapi.staticfiles import StaticFiles
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from gauge_reader import angle_to_value
-from gauge_reader.find_gauge_center import find_gauge_center
-from gauge_reader.find_needle_radial import find_needle_angle, draw_needle, detect_scale_range, compute_variance_profile, learn_gap_params
+from gauge_reader.find_gauge_center import find_gauge_center, find_gauge_center_legacy
+from gauge_reader.find_needle_radial import find_needle_angle as find_needle_angle_legacy, draw_needle, detect_scale_range, compute_variance_profile, learn_gap_params
+from gauge_reader.find_needle import find_needle_angle
+from gauge_reader.preprocess import preprocess
+from gauge_reader.temporal import CenterTracker, AngleKalman
 from gauge_reader.value_filter import ValueFilter
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/app/config.json")
@@ -72,6 +75,13 @@ def load_config():
     defaults.setdefault("filter_alpha", 0.15)
     defaults.setdefault("filter_max_jump", 1.5)
     defaults.setdefault("filter_window", 5)
+    defaults.setdefault("detect_method", "auto")
+    defaults.setdefault("use_clahe", True)
+    defaults.setdefault("use_difference_ref", False)
+    defaults.setdefault("overlay_fps", 4)
+    defaults.setdefault("center_ema", 0.3)
+    defaults.setdefault("angle_kalman_R", 0.1)
+    defaults.setdefault("angle_kalman_Q", 0.01)
     return defaults
 
 
@@ -101,6 +111,11 @@ _stream_detect = None
 _value_filter_lock = threading.Lock()
 _value_filter = ValueFilter()
 
+_center_tracker = CenterTracker()
+_center_tracker_lock = threading.Lock()
+_angle_kalman = AngleKalman()
+_angle_kalman_lock = threading.Lock()
+
 def _reinit_filter(cfg):
     with _value_filter_lock:
         _value_filter.update_params(
@@ -108,6 +123,13 @@ def _reinit_filter(cfg):
             jump=float(cfg.get("filter_max_jump", 1.5)),
         )
         _value_filter.median_window_size = int(cfg.get("filter_window", 5))
+
+def _reinit_temporal(cfg):
+    with _center_tracker_lock:
+        _center_tracker.alpha = float(cfg.get("center_ema", 0.3))
+    with _angle_kalman_lock:
+        _angle_kalman.R = float(cfg.get("angle_kalman_R", 0.1))
+        _angle_kalman.Q = float(cfg.get("angle_kalman_Q", 0.01))
 
 _DETECT_MAX_W = 640
 _DETECT_USE_W = 320  # internal detection resolution for speed (4× fewer pixels)
@@ -311,7 +333,9 @@ def set_stream_detect_config(body: dict):
     allowed = {"min_value", "max_value", "min_angle", "max_angle",
                "center_offset_y", "inner_ratio", "outer_ratio",
                "blur_kernel", "threshold_block", "threshold_c",
-               "filter_alpha", "filter_max_jump", "filter_window"}
+               "filter_alpha", "filter_max_jump", "filter_window",
+               "detect_method", "use_clahe", "center_ema",
+               "angle_kalman_R", "angle_kalman_Q"}
     with _detect_config_lock:
         _detect_config.clear()
         _detect_config.update((k, v) for k, v in body.items() if k in allowed)
@@ -319,6 +343,7 @@ def set_stream_detect_config(body: dict):
     merged = load_config()
     merged.update(_detect_config)
     _reinit_filter(merged)
+    _reinit_temporal(merged)
     return {"ok": True}
 
 
@@ -347,7 +372,10 @@ def _resize_for_detect(img):
 
 
 def _run_detection(frame, cfg):
-    # Detect at _DETECT_USE_W for speed, upscale coords to frame resolution
+    """Detect gauge: v2 pipeline with legacy fallback via detect_method config."""
+    method = cfg.get("detect_method", "auto")
+    use_clahe = cfg.get("use_clahe", True)
+
     h_orig, w_orig = frame.shape[:2]
     if max(w_orig, h_orig) > _DETECT_USE_W:
         scale = _DETECT_USE_W / max(w_orig, h_orig)
@@ -357,26 +385,70 @@ def _run_detection(frame, cfg):
         scale = 1.0
         small = frame
 
-    center = find_gauge_center(small)
-    if center is None:
-        return {"error": "could not find gauge center"}
+    # Preprocess
+    if method != "radial":
+        proc = preprocess(small, clahe=use_clahe, denoise=True)
+    else:
+        proc = small
 
-    cx, cy, radius = center
-    cy += int(cfg["center_offset_y"])
-    angle_deg = find_needle_angle(
-        small, cx, cy, radius,
-        inner_ratio=float(cfg["inner_ratio"]),
-        outer_ratio=float(cfg["outer_ratio"]),
-        blur_kernel=int(cfg["blur_kernel"]),
-        threshold_block=int(cfg["threshold_block"]),
-        threshold_c=int(cfg["threshold_c"]),
-    )
+    # Center detection
+    if method == "radial":
+        center_result = find_gauge_center_legacy(proc)
+        if center_result is None:
+            return {"error": "could not find gauge center"}
+        cx, cy, radius = center_result
+    else:
+        with _center_tracker_lock:
+            prev = _center_tracker.get() if _center_tracker.initialized else None
+        center_result = find_gauge_center(proc, prev_center=prev,
+                                          ema_alpha=float(cfg.get("center_ema", 0.3)),
+                                          use_clahe=use_clahe)
+        if center_result is None:
+            return {"error": "could not find gauge center"}
+        cx, cy, radius = center_result
+        with _center_tracker_lock:
+            _center_tracker.update(cx, cy, radius)
 
-    # Upscale coords to original frame resolution
+    cy_adjusted = cy + int(cfg["center_offset_y"])
+
+    # Needle detection
+    if method == "radial":
+        angle_deg = find_needle_angle_legacy(
+            proc, cx, cy_adjusted, radius,
+            inner_ratio=float(cfg["inner_ratio"]),
+            outer_ratio=float(cfg["outer_ratio"]),
+            blur_kernel=int(cfg["blur_kernel"]),
+            threshold_block=int(cfg["threshold_block"]),
+            threshold_c=int(cfg["threshold_c"]),
+        )
+    else:
+        angle_result = find_needle_angle(
+            proc, cx, cy_adjusted, radius,
+            inner_ratio=float(cfg["inner_ratio"]),
+            outer_ratio=float(cfg["outer_ratio"]),
+            blur_kernel=int(cfg["blur_kernel"]),
+            threshold_block=int(cfg["threshold_block"]),
+            threshold_c=int(cfg["threshold_c"]),
+            method=method,
+            background_ref=None,
+            min_angle=float(cfg["min_angle"]),
+            max_angle=float(cfg["max_angle"]),
+            use_clahe=use_clahe,
+        )
+        if "error" in angle_result:
+            return angle_result
+        angle_deg = float(angle_result["angle"])
+
+    # Temporal angle filter
+    if method != "radial":
+        with _angle_kalman_lock:
+            angle_deg = _angle_kalman.update(angle_deg)
+
+    # Upscale coords
     inv = 1.0 / scale if scale != 1.0 else 1.0
-    cx = int(cx * inv)
-    cy = int(cy * inv)
-    radius = int(radius * inv)
+    cx_out = int(cx * inv)
+    cy_out = int(cy_adjusted * inv)
+    radius_out = int(radius * inv)
 
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
@@ -385,7 +457,7 @@ def _run_detection(frame, cfg):
     return {
         "value": round(value, 2),
         "angle": round(angle_deg, 2),
-        "center": {"x": cx, "y": cy, "radius": radius},
+        "center": {"x": cx_out, "y": cy_out, "radius": radius_out},
         "error": None,
         "w": w_orig, "h": h_orig,
     }
@@ -553,12 +625,15 @@ def update_config(body: dict):
         "blur_kernel", "threshold_block", "threshold_c",
         "interval_seconds", "server_api_url", "api_key",
         "filter_alpha", "filter_max_jump", "filter_window",
+        "detect_method", "use_clahe", "use_difference_ref",
+        "overlay_fps", "center_ema", "angle_kalman_R", "angle_kalman_Q",
     }
     for k, v in body.items():
         if k in allowed:
             cfg[k] = v
     save_config(cfg)
     _reinit_filter(cfg)
+    _reinit_temporal(cfg)
     return {"status": "ok", "config": cfg}
 
 
