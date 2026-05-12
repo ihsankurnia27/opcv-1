@@ -19,7 +19,7 @@ def _hough_circles(gray, image_w, image_h):
     )
     if circles is not None and len(circles) > 0:
         c = circles[0][0]
-        return int(c[0]), int(c[1]), int(c[2]), 0.9
+        return int(c[0]), int(c[1]), int(c[2])
     return None
 
 
@@ -43,7 +43,7 @@ def _contour_circularity(gray, image_w, image_h):
             best = cnt
     if best is not None:
         (cx, cy), radius = cv2.minEnclosingCircle(best)
-        return int(cx), int(cy), int(radius), 0.7
+        return int(cx), int(cy), int(radius)
     return None
 
 
@@ -62,8 +62,7 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True):
         use_clahe: whether to apply CLAHE before detection
 
     Returns:
-        (cx, cy, radius, confidence) or None
-        confidence: 0.0-1.0 (1.0 = Hough found perfect circle)
+        (cx, cy, radius) or None
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape[:2]
@@ -84,7 +83,7 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True):
 
     # Strategy C: Temporal prior
     if prev_center is not None:
-        return (int(prev_center[0]), int(prev_center[1]), int(prev_center[2]), 0.3)
+        return (int(prev_center[0]), int(prev_center[1]), int(prev_center[2]))
 
     return None
 

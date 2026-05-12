@@ -15,11 +15,10 @@ def test_detects_fake_gauge_circle():
     img = make_fake_gauge(320, 240, 150)
     result = find_gauge_center(img, use_clahe=False)
     assert result is not None
-    cx, cy, radius, conf = result
+    cx, cy, radius = result
     assert abs(cx - 320) < 30, f"cx off: {cx}"
     assert abs(cy - 240) < 30, f"cy off: {cy}"
     assert 120 < radius < 180, f"radius off: {radius}"
-    assert conf > 0.5
 
 
 def test_returns_none_on_blank_image():
@@ -33,9 +32,8 @@ def test_temporal_prior_beats_no_detection():
     prev = (300, 200, 140)
     result = find_gauge_center(img, prev_center=prev, use_clahe=False)
     assert result is not None
-    cx, cy, radius, conf = result
+    cx, cy, radius = result
     assert cx == 300 and cy == 200 and radius == 140
-    assert conf < 0.5, "temporal prior should have low confidence"
 
 
 def test_legacy_works():
