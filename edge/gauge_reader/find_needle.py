@@ -183,7 +183,10 @@ def _vote_angles(candidates):
         return float(avg_angle), confidence
     else:
         angle, conf = best_group[0]
-        return angle, conf * 0.5
+        # Penalty proportional to how much confidence is in this lone group vs all
+        total_conf = sum(w for _, w in candidates)
+        penalty = max(0.5, conf / max(0.01, total_conf))
+        return angle, conf * penalty
 
 
 def find_needle_angle(image, cx, cy, radius, inner_ratio=0.60, outer_ratio=0.80,
@@ -215,6 +218,7 @@ def find_needle_angle(image, cx, cy, radius, inner_ratio=0.60, outer_ratio=0.80,
         gray = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
                                      cv2.THRESH_BINARY, b, threshold_c)
 
+    # candidates: list of (angle, confidence, method_name)
     candidates = []
 
     # Strategy A: Line detection
@@ -243,7 +247,7 @@ def find_needle_angle(image, cx, cy, radius, inner_ratio=0.60, outer_ratio=0.80,
     if method in ("auto", "radial"):
         result = _needle_radial_angle(gray, cx, cy, radius, inner_ratio, outer_ratio)
         if result is not None:
-            candidates.append((result[0], result[1] * 0.6, "radial"))
+            candidates.append((result[0], result[1], "radial"))
 
     if not candidates:
         return {"error": "could not find needle"}
