@@ -402,7 +402,7 @@ def _run_detection(frame, cfg):
             prev = _center_tracker.get() if _center_tracker.initialized else None
         center_result = find_gauge_center(proc, prev_center=prev,
                                           ema_alpha=float(cfg.get("center_ema", 0.3)),
-                                          use_clahe=use_clahe)
+                                          use_clahe=False)
         if center_result is None:
             return {"error": "could not find gauge center"}
         cx, cy, radius = center_result
@@ -433,7 +433,6 @@ def _run_detection(frame, cfg):
             background_ref=None,
             min_angle=float(cfg["min_angle"]),
             max_angle=float(cfg["max_angle"]),
-            use_clahe=use_clahe,
         )
         if "error" in angle_result:
             return angle_result
