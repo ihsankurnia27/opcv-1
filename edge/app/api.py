@@ -692,6 +692,10 @@ def send_to_server(
         raise HTTPException(502, f"HTTP {e.code}: {e.read().decode(errors='replace')[:200]}")
     except urllib.error.URLError as e:
         raise HTTPException(502, str(e.reason))
+    except json.JSONDecodeError:
+        raise HTTPException(502, "invalid response from server")
+    except Exception as e:
+        raise HTTPException(502, str(e))
 
 
 # --- Legacy aliases ---
