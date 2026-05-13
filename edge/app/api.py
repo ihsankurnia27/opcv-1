@@ -659,6 +659,41 @@ def proxy_points():
         raise HTTPException(502, str(e))
 
 
+@app.post("/api/send-to-server")
+def send_to_server(
+    point: str = Form(...),
+    value: float = Form(...),
+    angle: float = Form(...),
+    annotated_image: str = Form(""),
+):
+    cfg = load_config()
+    url = cfg.get("server_api_url", "")
+    if not url:
+        raise HTTPException(400, "server_api_url not configured")
+
+    payload = {
+        "point": point,
+        "value": value,
+        "angle": angle,
+        "annotated_image": annotated_image,
+    }
+    api_key = cfg.get("api_key", "")
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method="POST")
+    req.add_header("Content-Type", "application/json")
+    if api_key:
+        req.add_header("Authorization", f"Bearer {api_key}")
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        raise HTTPException(502, f"HTTP {e.code}: {e.read().decode(errors='replace')[:200]}")
+    except urllib.error.URLError as e:
+        raise HTTPException(502, str(e.reason))
+
+
 # --- Legacy aliases ---
 
 @app.post("/api/test-capture")
