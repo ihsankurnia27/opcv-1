@@ -413,6 +413,32 @@ input[type="password"] { letter-spacing: .2em; }
 
 @media (max-width: 700px) { .result-layout { grid-template-columns: 1fr; } }
 
+.result-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+}
+
+.form-select {
+  font-family: var(--font);
+  font-size: .75rem;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  min-width: 200px;
+  flex: 1;
+}
+
+.send-status {
+  font-size: .72rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
 #result-img {
   width: 100%;
   max-height: 300px;
@@ -662,6 +688,11 @@ input[type="password"] { letter-spacing: .2em; }
           <img id="result-img">
           <pre id="result-data"></pre>
         </div>
+        <div class="result-actions" id="result-actions" style="display:none">
+          <select id="result-point" class="form-select"></select>
+          <button class="btn btn-primary" id="btn-send" onclick="sendToServer()">Send to Server</button>
+          <span id="send-status" class="send-status"></span>
+        </div>
       </div>
     </div>
 
@@ -685,6 +716,10 @@ let calImageW = 640;
 let calImageH = 480;
 let calSnapshotResult = null;
 let calImageBlob = null;
+let lastResult = null;
+let pointsList = [];
+let lastResult = null;
+let pointsList = [];
 
 function q(id) { return document.getElementById(id); }
 
@@ -1108,12 +1143,55 @@ function showResult(r) {
   q('result-data').textContent = JSON.stringify({value: r.value, angle: r.angle, center: r.center}, null, 2);
   q('result-data').style.display = 'block';
   q('result-summary').textContent = r.value + ' @ ' + r.angle + ' deg';
+  lastResult = r;
+  const sel = q('result-point');
+  sel.innerHTML = '';
+  pointsList.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.point;
+    opt.textContent = p.point + ' | ' + (p.area||'') + ' | ' + (p.procces||'') + ' | ' + (p.item||'');
+    sel.appendChild(opt);
+  });
+  if (sel.options.length === 0) {
+    const cfgPt = q('point')?.value;
+    if (cfgPt) { const o = document.createElement('option'); o.value = cfgPt; o.textContent = cfgPt; sel.appendChild(o); }
+  }
+  q('result-actions').style.display = 'flex';
 }
 
 function hideResult() {
   q('result-card').style.display = 'none';
+  q('result-actions').style.display = 'none';
+  lastResult = null;
   clearCanvas();
   resetHUD();
+}
+
+async function sendToServer() {
+  if (!lastResult) { toast('[FAIL] No result to send', 'error'); return; }
+  const sel = q('result-point');
+  if (!sel.value) { toast('[FAIL] Select a point first', 'error'); return; }
+  const btn = q('btn-send');
+  const status = q('send-status');
+  btn.disabled = true;
+  status.textContent = 'Sending...';
+  try {
+    const form = new FormData();
+    form.append('point', sel.value);
+    form.append('value', String(lastResult.value));
+    form.append('angle', String(lastResult.angle));
+    form.append('annotated_image', lastResult.annotated_image || '');
+    const r = await fetch(API + '/api/send-to-server', { method: 'POST', body: form });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    toast('[OK] Sent to server: ' + (data.status || data.message || 'ok'));
+    status.textContent = 'Sent ' + String.fromCodePoint(0x2713);
+  } catch(e) {
+    toast('[FAIL] ' + e.message, 'error');
+    status.textContent = 'Failed';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // === One-shot ===
@@ -1222,6 +1300,7 @@ async function fetchPoints() {
       }
       sel.appendChild(opt);
     });
+    pointsList = r;
     if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
     toast('[OK] ' + r.length + ' points');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
