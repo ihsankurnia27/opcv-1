@@ -1360,7 +1360,7 @@ function getFormValues() {
     'min_value','max_value','min_angle','max_angle','center_offset_y','inner_ratio','outer_ratio',
     'blur_kernel','threshold_block','threshold_c','interval_seconds',
     'filter_alpha','filter_max_jump','filter_window',
-    'detect_method','use_clahe','use_difference_ref','overlay_fps','center_ema','angle_kalman_R','angle_kalman_Q'];
+    'detect_method','use_clahe','center_ema','angle_kalman_R','angle_kalman_Q'];
   const vals = {};
   fields.forEach(k => { const el = q(k); if (el) vals[k] = el.value; });
   // Checkbox fields

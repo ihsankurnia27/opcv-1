@@ -691,6 +691,8 @@ async def detect(
     threshold_block: int = Form(0),
     threshold_c: int = Form(5),
     need_annotation: bool = Form(True),
+    detect_method: str = Form("auto"),
+    use_clahe: bool = Form(True),
 ):
     contents = await image.read()
     np_arr = np.frombuffer(contents, np.uint8)
@@ -709,6 +711,8 @@ async def detect(
         "max_angle": max_angle,
         "min_value": min_value,
         "max_value": max_value,
+        "detect_method": detect_method,
+        "use_clahe": use_clahe,
     }
     result = _run_detection(img, cfg)
     if result.get("error"):
