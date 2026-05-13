@@ -718,8 +718,6 @@ let calSnapshotResult = null;
 let calImageBlob = null;
 let lastResult = null;
 let pointsList = [];
-let lastResult = null;
-let pointsList = [];
 
 function q(id) { return document.getElementById(id); }
 
@@ -1185,7 +1183,7 @@ async function sendToServer() {
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
     toast('[OK] Sent to server: ' + (data.status || data.message || 'ok'));
-    status.textContent = 'Sent ' + String.fromCodePoint(0x2713);
+    status.textContent = 'Sent ✓';
   } catch(e) {
     toast('[FAIL] ' + e.message, 'error');
     status.textContent = 'Failed';
