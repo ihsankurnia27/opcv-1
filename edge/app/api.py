@@ -669,7 +669,7 @@ def send_to_server(
     cfg = load_config()
     url = cfg.get("server_api_url", "")
     if not url:
-        raise HTTPException(400, "server_api_url not configured")
+        raise HTTPException(502, "server_api_url not configured")
 
     payload = {
         "point": point,
