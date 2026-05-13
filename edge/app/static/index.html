@@ -763,10 +763,38 @@ input[type="password"] { letter-spacing: .3em; }
         <div class="field-group"><label>Inner Ratio</label><input id="inner_ratio" type="number" step="0.05" min="0.1" max="0.9" value="0.60"></div>
         <div class="field-group"><label>Outer Ratio</label><input id="outer_ratio" type="number" step="0.05" min="0.2" max="1" value="0.80"></div>
       </div>
+      <div class="field-row single">
+        <div class="field-group">
+          <label>Method</label>
+          <select id="detect_method">
+            <option value="auto">Auto (multi-strategy vote)</option>
+            <option value="line">Line (Hough)</option>
+            <option value="radial">Radial (legacy)</option>
+            <option value="diff">Difference</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row single">
+        <div class="field-group">
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="use_clahe" checked style="width:auto">
+            CLAHE lighting normalization
+          </label>
+        </div>
+      </div>
       <div class="field-row three">
         <div class="field-group"><label>Blur Kernel</label><input id="blur_kernel" type="number" step="2" min="1" max="31" value="5"></div>
         <div class="field-group"><label>Threshold Block</label><input id="threshold_block" type="number" step="2" min="0" max="99" value="0"></div>
         <div class="field-group"><label>Threshold C</label><input id="threshold_c" type="number" min="0" max="20" value="5"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Smoothing v2 <span class="badge">TEMPORAL</span></div>
+      <div class="field-row three">
+        <div class="field-group"><label>Center EMA</label><input id="center_ema" type="number" step="0.05" min="0.05" max="0.95" value="0.30"></div>
+        <div class="field-group"><label>Kalman R</label><input id="angle_kalman_R" type="number" step="0.01" min="0.01" max="5" value="0.10"><div class="help">measurement noise</div></div>
+        <div class="field-group"><label>Kalman Q</label><input id="angle_kalman_Q" type="number" step="0.001" min="0.001" max="1" value="0.01"><div class="help">process noise</div></div>
       </div>
     </div>
 
@@ -937,6 +965,7 @@ function setCameraMode(mode) {
   if (streamActive) toggleStream();
   cameraMode = mode;
   document.querySelectorAll('.feed-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  stopOverlay();
   hideResult();
 }
 
@@ -954,6 +983,7 @@ async function toggleStream() {
 }
 
 function stopStream() {
+  stopOverlay();
   if (streamDetectActive) {
     stopStreamDetection();
     streamDetectActive = false;
@@ -1032,6 +1062,7 @@ async function startClientStream() {
     q('btn-stream').textContent = 'Stop';
     q('btn-stream').className = 'btn btn-sm btn-red';
     updateCanvasSize();
+    startOverlay();
     if (streamDetectActive) startStreamDetection();
   } catch(e) {
     if (e.name === 'NotAllowedError') {
@@ -1064,6 +1095,137 @@ function resetHUD() {
   q('hud-center').textContent = '--';
   q('hud-status').textContent = 'Idle';
   q('hud-value').className = 'hud-value';
+}
+
+let overlayTimer = null;
+let overlayActive = false;
+let overlayFps = 4;
+
+function startOverlay() {
+  if (overlayActive) return;
+  overlayActive = true;
+  overlayFps = parseFloat(q('overlay_fps')?.value) || 4;
+  pollOverlay();
+}
+
+function stopOverlay() {
+  overlayActive = false;
+  if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = null; }
+  clearCanvas();
+}
+
+async function pollOverlay() {
+  if (!overlayActive) return;
+  if (cameraMode !== 'client' || !streamActive) {
+    stopOverlay();
+    return;
+  }
+  try {
+    const video = q('feed-video');
+    if (!video || !video.videoWidth) { overlayTimer = setTimeout(pollOverlay, 1000 / overlayFps); return; }
+    // Capture frame
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    const blob = await new Promise(resolve => c.toBlob(resolve, 'image/jpeg', 0.7));
+    // POST to /detect
+    const form = new FormData();
+    form.append('image', blob, 'frame.jpg');
+    ['min_angle','max_angle','min_value','max_value','center_offset_y',
+     'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id => {
+      const el = q(id);
+      if (el) form.append(id, el.value);
+    });
+    form.append('detect_method', q('detect_method')?.value || 'auto');
+    form.append('use_clahe', q('use_clahe')?.checked ? 'true' : 'false');
+    form.append('need_annotation', 'false');
+    const r = await fetch(API + '/detect', { method: 'POST', body: form });
+    if (r.ok) {
+      const d = await r.json();
+      if (d && d.center && d.angle !== undefined && !d.error) {
+        drawOverlay(d);
+        updateOverlayHUD(d);
+      }
+    }
+  } catch(e) { /* silent — next poll will retry */ }
+  overlayTimer = setTimeout(pollOverlay, 1000 / overlayFps);
+}
+
+function drawOverlay(d) {
+  const canvas = q('feed-canvas');
+  const body = q('feed-body');
+  canvas.width = body.clientWidth;
+  canvas.height = body.clientHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const ctr = d.center;
+  const video = q('feed-video');
+  const vw = video.videoWidth || 640;
+  const vh = video.videoHeight || 480;
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  // Letterbox mapping
+  const videoAspect = vw / vh;
+  const canvasAspect = cw / ch;
+  let renderW, renderH, offX, offY;
+  if (videoAspect > canvasAspect) {
+    renderW = cw;
+    renderH = cw / videoAspect;
+    offX = 0;
+    offY = (ch - renderH) / 2;
+  } else {
+    renderH = ch;
+    renderW = ch * videoAspect;
+    offY = 0;
+    offX = (cw - renderW) / 2;
+  }
+  const sx = renderW / vw;
+  const sy = renderH / vh;
+
+  const cx = offX + ctr.x * sx;
+  const cy = offY + ctr.y * sy;
+  const radius = ctr.radius * sx;
+
+  // Gauge circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(225,29,72,0.8)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#e11d48';
+  ctx.fill();
+
+  // Needle line
+  const angleRad = d.angle * Math.PI / 180;
+  const nx = cx + radius * 0.85 * Math.cos(angleRad);
+  const ny = cy + radius * 0.85 * Math.sin(angleRad);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.strokeStyle = '#e11d48';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = 'rgba(225,29,72,0.4)';
+  ctx.shadowBlur = 10;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function updateOverlayHUD(d) {
+  q('hud-value').textContent = d.value !== undefined ? d.value : '--';
+  q('hud-value').className = 'hud-value gold';
+  q('hud-angle').textContent = d.angle !== undefined ? d.angle + ' deg' : '--';
+  q('hud-angle').className = 'hud-value teal';
+  q('hud-center').textContent = d.center ? d.center.x + ',' + d.center.y : '--';
+  q('hud-status').textContent = 'Overlay';
+  q('hud-status').className = 'hud-value green';
 }
 
 // === Detect toggle ===
@@ -1197,9 +1359,12 @@ function getFormValues() {
   const fields = ['point','server_api_url','api_key','camera_id','cam_resolution',
     'min_value','max_value','min_angle','max_angle','center_offset_y','inner_ratio','outer_ratio',
     'blur_kernel','threshold_block','threshold_c','interval_seconds',
-    'filter_alpha','filter_max_jump','filter_window'];
+    'filter_alpha','filter_max_jump','filter_window',
+    'detect_method','use_clahe','use_difference_ref','overlay_fps','center_ema','angle_kalman_R','angle_kalman_Q'];
   const vals = {};
   fields.forEach(k => { const el = q(k); if (el) vals[k] = el.value; });
+  // Checkbox fields
+  vals['use_clahe'] = q('use_clahe')?.checked ? '1' : '0';
   return vals;
 }
 
@@ -1238,6 +1403,11 @@ async function loadConfig() {
         camSel.value = String(c.camera_id);
       }
     }
+    const checkboxFields = ['use_clahe'];
+    checkboxFields.forEach(k => {
+      const el = q(k);
+      if (el && c[k] !== undefined) el.checked = !!c[k];
+    });
     toast('[OK] Config loaded');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
