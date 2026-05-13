@@ -15,5 +15,12 @@
   "cam_resolution": "0x0",
   "filter_alpha": 0.15,
   "filter_max_jump": 1.5,
-  "filter_window": 5
+  "filter_window": 5,
+  "detect_method": "auto",
+  "use_clahe": true,
+  "use_difference_ref": false,
+  "overlay_fps": 4,
+  "center_ema": 0.3,
+  "angle_kalman_R": 0.1,
+  "angle_kalman_Q": 0.01
 }
