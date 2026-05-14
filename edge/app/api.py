@@ -280,32 +280,20 @@ def _reader_loop(camera_id, width, height):
                                 # Plain
                                 _, proc_jpeg = cv2.imencode(".jpg", debug_proc_img, [cv2.IMWRITE_JPEG_QUALITY, 40])
                                 _stream_jpeg["preprocess"] = proc_jpeg.tobytes()
-                                # Annotated
-                                debug_proc_rgb = cv2.cvtColor(debug_proc_img, cv2.COLOR_GRAY2BGR)
-                                debug_ann = draw_needle(debug_proc_rgb,
-                                                        ctr["x"], ctr["y"], ctr["radius"], angle_deg,
-                                                        inner_ratio=float(cfg["inner_ratio"]),
-                                                        outer_ratio=float(cfg["outer_ratio"]),
-                                                        min_angle=float(cfg["min_angle"]),
-                                                        max_angle=float(cfg["max_angle"]))
-                                _, proc_ann_jpeg = cv2.imencode(".jpg", debug_ann, [cv2.IMWRITE_JPEG_QUALITY, 40])
-                                _stream_jpeg["preprocess_ann"] = proc_ann_jpeg.tobytes()
+                                # Annotated (pre-rendered in _run_detection)
+                                if "debug_preprocess_ann" in result:
+                                    _, proc_ann_jpeg = cv2.imencode(".jpg", result.pop("debug_preprocess_ann"), [cv2.IMWRITE_JPEG_QUALITY, 40])
+                                    _stream_jpeg["preprocess_ann"] = proc_ann_jpeg.tobytes()
 
                             # 4. Binary variants
                             if debug_bin_img is not None:
                                 # Plain
                                 _, bin_jpeg = cv2.imencode(".jpg", debug_bin_img, [cv2.IMWRITE_JPEG_QUALITY, 30])
                                 _stream_jpeg["binary"] = bin_jpeg.tobytes()
-                                # Annotated (with detection color)
-                                debug_bin_rgb = cv2.cvtColor(debug_bin_img, cv2.COLOR_GRAY2BGR)
-                                debug_ann = draw_needle(debug_bin_rgb,
-                                                        ctr["x"], ctr["y"], ctr["radius"], angle_deg,
-                                                        inner_ratio=float(cfg["inner_ratio"]),
-                                                        outer_ratio=float(cfg["outer_ratio"]),
-                                                        min_angle=float(cfg["min_angle"]),
-                                                        max_angle=float(cfg["max_angle"]))
-                                _, bin_ann_jpeg = cv2.imencode(".jpg", debug_ann, [cv2.IMWRITE_JPEG_QUALITY, 30])
-                                _stream_jpeg["binary_ann"] = bin_ann_jpeg.tobytes()
+                                # Annotated (pre-rendered in _run_detection)
+                                if "debug_binary_ann" in result:
+                                    _, bin_ann_jpeg = cv2.imencode(".jpg", result.pop("debug_binary_ann"), [cv2.IMWRITE_JPEG_QUALITY, 30])
+                                    _stream_jpeg["binary_ann"] = bin_ann_jpeg.tobytes()
                         else:
                             _stream_detect = result
                     last_detect = now
@@ -498,7 +486,7 @@ def _run_detection(frame, cfg):
     cy_out = int(cy_adjusted * inv)
     radius_out = int(radius * inv)
 
-    # Debug images for stream
+    # Debug images for stream — annotate BEFORE upscaling coords
     gray = cv2.cvtColor(proc, cv2.COLOR_BGR2GRAY)
     if int(cfg["blur_kernel"]) > 0:
         k = int(cfg["blur_kernel"])
@@ -513,14 +501,23 @@ def _run_detection(frame, cfg):
     else:
         debug_binary = gray
 
-    # Upscale debug images to avoid "blurry as fuck" view
-    # if scale != 1.0:
-    #     debug_proc = cv2.resize(debug_proc, (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
-    #     debug_binary = cv2.resize(debug_binary, (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
-
     # Convert debug_proc to grayscale (match what detection sees)
     if debug_proc is not None:
         debug_proc = cv2.cvtColor(debug_proc, cv2.COLOR_BGR2GRAY)
+
+    # Annotate debug images at detection resolution (small-res coords)
+    ann_proc = draw_needle(cv2.cvtColor(debug_proc, cv2.COLOR_GRAY2BGR),
+                           cx, cy_adjusted, radius, angle_deg,
+                           inner_ratio=float(cfg["inner_ratio"]),
+                           outer_ratio=float(cfg["outer_ratio"]),
+                           min_angle=float(cfg["min_angle"]),
+                           max_angle=float(cfg["max_angle"]))
+    ann_binary = draw_needle(cv2.cvtColor(debug_binary, cv2.COLOR_GRAY2BGR),
+                             cx, cy_adjusted, radius, angle_deg,
+                             inner_ratio=float(cfg["inner_ratio"]),
+                             outer_ratio=float(cfg["outer_ratio"]),
+                             min_angle=float(cfg["min_angle"]),
+                             max_angle=float(cfg["max_angle"]))
 
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
@@ -533,7 +530,9 @@ def _run_detection(frame, cfg):
         "error": None,
         "w": w_orig, "h": h_orig,
         "debug_preprocess": debug_proc,
-        "debug_binary": debug_binary
+        "debug_binary": debug_binary,
+        "debug_preprocess_ann": ann_proc,
+        "debug_binary_ann": ann_binary
     }
 
 
