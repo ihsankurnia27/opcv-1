@@ -807,6 +807,14 @@ input[type="password"] { letter-spacing: .2em; }
           <button class="feed-tab active" data-mode="edge" onclick="setCameraMode('edge')">Edge Cam</button>
           <button class="feed-tab" data-mode="client" onclick="setCameraMode('client')">Client Cam</button>
         </div>
+        <div class="feed-ctrl" style="margin-left: 8px;">
+          <select id="stream_mode" class="btn btn-xs" style="width: auto; height: 32px; padding: 0 12px; border-radius: 16px;" onchange="onStreamModeChange()">
+            <option value="annotated">Annotated</option>
+            <option value="raw">Raw</option>
+            <option value="preprocess">Preprocessed</option>
+            <option value="binary">Binary (BW)</option>
+          </select>
+        </div>
         <div class="feed-ctrl">
           <button class="btn btn-sm btn-primary" id="btn-stream" onclick="toggleStream()">Start</button>
           <button class="btn btn-sm" id="btn-detect" onclick="toggleDetect()">Detect</button>
@@ -1007,7 +1015,8 @@ function startEdgeStream() {
   const res = q('cam_resolution').value.split('x').map(Number);
   const w = res[0] || 0;
   const h = res[1] || 0;
-  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h;
+  const mode = q('stream_mode').value;
+  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h + '&mode=' + mode;
   const img = q('feed-stream');
   q('feed-placeholder').style.display = 'none';
   q('feed-video').style.display = 'none';
@@ -1763,6 +1772,12 @@ async function runUpdate() {
     toast('[FAIL] ' + e.message, 'error');
   }
   setTimeout(() => { btn.disabled = false; btn.textContent = 'Update'; checkHealth(); fetchVersion(); }, 5000);
+}
+
+function onStreamModeChange() {
+  if (streamActive && cameraMode === 'edge') {
+    startEdgeStream();
+  }
 }
 
 // === Init ===

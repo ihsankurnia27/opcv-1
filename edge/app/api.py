@@ -105,7 +105,7 @@ _bg_stop = threading.Event()
 
 _detect_config = {}
 _detect_config_lock = threading.Lock()
-_stream_jpeg = None
+_stream_jpeg = {}          # mode -> bytes (MJPEG buffer)
 _stream_detect = None
 
 _value_filter_lock = threading.Lock()
@@ -255,6 +255,9 @@ def _reader_loop(camera_id, width, height):
                             _stream_detect = result
                             angle_deg = float(result["angle"])
                             ctr = result["center"]
+
+                            # Encode multiple stream variants
+                            # 1. Annotated
                             annotated = draw_needle(frame.copy(),
                                                     ctr["x"], ctr["y"], ctr["radius"], angle_deg,
                                                     inner_ratio=float(cfg["inner_ratio"]),
@@ -262,7 +265,21 @@ def _reader_loop(camera_id, width, height):
                                                     min_angle=float(cfg["min_angle"]),
                                                     max_angle=float(cfg["max_angle"]))
                             _, ann_jpeg = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 50])
-                            _stream_jpeg = ann_jpeg.tobytes()
+                            _stream_jpeg["annotated"] = ann_jpeg.tobytes()
+
+                            # 2. Raw
+                            _, raw_jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 40])
+                            _stream_jpeg["raw"] = raw_jpeg.tobytes()
+
+                            # 3. Preprocessed (intermediate BGR)
+                            if "debug_preprocess" in result:
+                                _, proc_jpeg = cv2.imencode(".jpg", result["debug_preprocess"], [cv2.IMWRITE_JPEG_QUALITY, 40])
+                                _stream_jpeg["preprocess"] = proc_jpeg.tobytes()
+
+                            # 4. Binary
+                            if "debug_binary" in result:
+                                _, bin_jpeg = cv2.imencode(".jpg", result["debug_binary"], [cv2.IMWRITE_JPEG_QUALITY, 30])
+                                _stream_jpeg["binary"] = bin_jpeg.tobytes()
                         else:
                             _stream_detect = result
                     last_detect = now
@@ -274,7 +291,7 @@ def _reader_loop(camera_id, width, height):
         cap.release()
         with _frame_buffer_lock:
             _frame_buffer.pop(camera_id, None)
-        _stream_jpeg = None
+        _stream_jpeg.clear()
         _stream_detect = None
         with _raw_jpeg_lock:
             _raw_jpeg_cache.pop(camera_id, None)
@@ -290,13 +307,15 @@ def _get_frame(camera_id):
 
 # --- MJPEG stream (raw only) ---
 
-def _generate_mjpeg(camera_id, width, height):
+def _generate_mjpeg(camera_id, width, height, mode="annotated"):
     _start_reader(camera_id, width, height)
     try:
         while True:
-            if _stream_jpeg is not None:
+            # Use requested mode, fallback to annotated
+            jpeg = _stream_jpeg.get(mode) or _stream_jpeg.get("annotated")
+            if jpeg is not None:
                 yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + _stream_jpeg + b"\r\n")
+                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
             else:
                 # Encode raw frame on demand at Q30, cache between captures
                 with _raw_jpeg_lock:
@@ -314,16 +333,17 @@ def _generate_mjpeg(camera_id, width, height):
                            b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
                 else:
                     time.sleep(0.05)
+            time.sleep(0.01) # Yield to other threads
     except GeneratorExit:
         pass
 
 
 @app.get("/api/stream")
-def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)):
+def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0), mode: str = Query("annotated")):
     if w <= 0 or h <= 0:
         w, h = _probe_native_resolution(camera_id)
     return StreamingResponse(
-        _generate_mjpeg(camera_id, w, h),
+        _generate_mjpeg(camera_id, w, h, mode=mode),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 
@@ -391,6 +411,8 @@ def _run_detection(frame, cfg):
     else:
         proc = small
 
+    debug_proc = proc.copy()
+
     # Center detection
     if method == "radial":
         center_result = find_gauge_center_legacy(proc)
@@ -412,6 +434,7 @@ def _run_detection(frame, cfg):
     cy_adjusted = cy + int(cfg["center_offset_y"])
 
     # Needle detection
+    debug_binary = None
     if method == "radial":
         angle_deg = find_needle_angle_legacy(
             proc, cx, cy_adjusted, radius,
@@ -449,6 +472,21 @@ def _run_detection(frame, cfg):
     cy_out = int(cy_adjusted * inv)
     radius_out = int(radius * inv)
 
+    # Debug images for stream
+    gray = cv2.cvtColor(proc, cv2.COLOR_BGR2GRAY)
+    if int(cfg["blur_kernel"]) > 0:
+        k = int(cfg["blur_kernel"])
+        k = k if k % 2 == 1 else k + 1
+        gray = cv2.GaussianBlur(gray, (k, k), 0)
+
+    if int(cfg["threshold_block"]) > 0:
+        b = int(cfg["threshold_block"])
+        b = b if b % 2 == 1 else b + 1
+        debug_binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                             cv2.THRESH_BINARY, b, int(cfg["threshold_c"]))
+    else:
+        debug_binary = gray
+
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
     value = angle_to_value(angle_deg, min_a, max_a, min_v, max_v)
@@ -459,6 +497,8 @@ def _run_detection(frame, cfg):
         "center": {"x": cx_out, "y": cy_out, "radius": radius_out},
         "error": None,
         "w": w_orig, "h": h_orig,
+        "debug_preprocess": debug_proc,
+        "debug_binary": debug_binary
     }
 
 
