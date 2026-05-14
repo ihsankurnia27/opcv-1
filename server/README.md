@@ -30,6 +30,10 @@ Record & view operational logsheet data across 3 shifts. Analog gauge meter read
 
 **Edge → Server only.** Edge is active: captures, detects, pushes. Server passively receives.
 
+- **Database Migration**: Added `image_path` column to `sheetsatu` table to store relative paths to annotated gauge images.
+- **Data Management**: Admin sidebar has "DATA MANAGEMENT" section with "Data Templates" and "Data Readings" pages for CRUD operations.
+- **Visual Audit**: Edge readings now store and display annotated gauge images in the data readings dashboard.
+
 ## Quick Start
 
 ### 1. Create shared network

@@ -44,7 +44,6 @@ require 'cek.php';
                                             <th>Remarks 2</th>
                                             <th>Shift 3</th>
                                             <th>Remarks 3</th>
-                                            <th>Image</th>
                                             <th>Aksi</th>
                                         </tr>
                                     </thead>
@@ -66,15 +65,6 @@ require 'cek.php';
                                             <td><?php echo $data['shift_tiga']?></td>
                                             <td><?php echo htmlspecialchars($data['remarks_tiga'])?></td>
                                             <td>
-                                                <?php if (!empty($data['image_path'])): ?>
-                                                    <a href="<?php echo $data['image_path']?>" target="_blank">
-                                                        <img src="<?php echo $data['image_path']?>" width="60" alt="annotated">
-                                                    </a>
-                                                <?php else: ?>
-                                                    -
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
                                                 <a href="#" class="fa fa-edit btn btn-primary btn-sm" data-toggle="modal" data-target="#myModal<?php echo $data['id']; ?>"></a>
                                             </td>
                                         </tr>
@@ -88,15 +78,6 @@ require 'cek.php';
                                                     </div>
                                                     <div class="modal-body">
                                                         <form role="form" action="proses-edit-reading.php" method="get">
-                                                            <?php if (!empty($data['image_path'])): ?>
-                                                                <div class="form-group text-center">
-                                                                    <label>Annotated Image</label>
-                                                                    <br>
-                                                                    <a href="<?php echo $data['image_path']; ?>" target="_blank">
-                                                                        <img src="<?php echo $data['image_path']; ?>" style="max-width: 100%; height: auto; max-height: 250px;" alt="annotated image">
-                                                                    </a>
-                                                                </div>
-                                                            <?php endif; ?>
                                                             <input type="hidden" name="id" value="<?php echo $data['id']; ?>">
                                                             <div class="form-group">
                                                                 <label>Area</label>

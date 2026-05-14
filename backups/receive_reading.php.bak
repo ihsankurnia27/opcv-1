@@ -90,15 +90,11 @@ $nilai_sql = mysqli_real_escape_string($koneksi, (string) $value);
 $remarks_sql = mysqli_real_escape_string($koneksi, 'Edge gauge auto (angle: ' . ($angle ?? '?') . '°)');
 $safe_point = mysqli_real_escape_string($koneksi, $point);
 
-$image_path_sql = $annotated_path ? "'" . mysqli_real_escape_string($koneksi, $annotated_path) . "'" : "NULL";
-
 // === UPSERT ===
 $check = mysqli_query($koneksi, "SELECT id, $kolom_shift FROM sheetsatu WHERE point = '$safe_point' AND tanggal = '$today' LIMIT 1");
 
 if ($check && mysqli_num_rows($check) > 0) {
-    $update_img = $annotated_path ? "image_path = '$annotated_path'," : "";
     $sql = "UPDATE sheetsatu SET
-        $update_img
         $kolom_shift = '$nilai_sql',
         $kolom_remark = '$remarks_sql',
         $kolom_time = NOW()
@@ -116,13 +112,13 @@ if ($check && mysqli_num_rows($check) > 0) {
         $freq_sql = mysqli_real_escape_string($koneksi, $tmpl_row['freq']);
 
         $sql = "INSERT INTO sheetsatu (area, procces, item, point, min, max, unit, freq,
-                $kolom_shift, $kolom_remark, $kolom_time, tanggal, image_path)
+                $kolom_shift, $kolom_remark, $kolom_time, tanggal)
                 VALUES ('$area_sql', '$procces_sql', '$item_sql', '$safe_point',
                 '$min_sql', '$max_sql', '$unit_sql', '$freq_sql',
-                '$nilai_sql', '$remarks_sql', NOW(), '$today', $image_path_sql)";
+                '$nilai_sql', '$remarks_sql', NOW(), '$today')";
     } else {
-        $sql = "INSERT INTO sheetsatu (point, $kolom_shift, $kolom_remark, $kolom_time, tanggal, image_path)
-                VALUES ('$safe_point', '$nilai_sql', '$remarks_sql', NOW(), '$today', $image_path_sql)";
+        $sql = "INSERT INTO sheetsatu (point, $kolom_shift, $kolom_remark, $kolom_time, tanggal)
+                VALUES ('$safe_point', '$nilai_sql', '$remarks_sql', NOW(), '$today')";
     }
 }
 
