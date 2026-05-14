@@ -1299,8 +1299,14 @@ async function startStreamDetection() {
   const cfg = {};
   ['min_angle','max_angle','min_value','max_value','center_offset_y',
    'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
-   'filter_alpha','filter_max_jump','filter_window'].forEach(id =>
-    cfg[id] = q(id).value);
+   'filter_alpha','filter_max_jump','filter_window',
+   'detect_method','center_ema','angle_kalman_R','angle_kalman_Q'].forEach(id => {
+    const el = q(id);
+    if (el) cfg[id] = el.value;
+  });
+  // Checkbox
+  cfg['use_clahe'] = q('use_clahe')?.checked ? '1' : '0';
+
   try {
     await fetch(API + '/api/stream-detect-config', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
