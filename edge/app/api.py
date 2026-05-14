@@ -537,6 +537,9 @@ def _run_detection(frame, cfg):
 
 
 def _finalize_detect_result(result, full_img, upscale, cfg, need_annotation=True):
+    # Strip debug images — numpy arrays not JSON-serializable
+    for key in ["debug_preprocess", "debug_binary", "debug_preprocess_ann", "debug_binary_ann"]:
+        result.pop(key, None)
     ctr = result["center"]
     ctr["x"] = int(ctr["x"] * upscale)
     ctr["y"] = int(ctr["y"] * upscale)
