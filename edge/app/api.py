@@ -487,6 +487,11 @@ def _run_detection(frame, cfg):
     else:
         debug_binary = gray
 
+    # Upscale debug images to avoid "blurry as fuck" view
+    if scale != 1.0:
+        debug_proc = cv2.resize(debug_proc, (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
+        debug_binary = cv2.resize(debug_binary, (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
+
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
     value = angle_to_value(angle_deg, min_a, max_a, min_v, max_v)
