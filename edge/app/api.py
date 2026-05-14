@@ -244,58 +244,66 @@ def _reader_loop(camera_id, width, height):
                     with _detect_config_lock:
                         cfg = _detect_config.copy() if _detect_config else load_config()
                     if cfg:
-                        result = _run_detection(frame, cfg)
-                        if not result.get("error"):
-                            # Apply value filter
-                            with _value_filter_lock:
-                                filtered = _value_filter.add(float(result["value"]))
-                            result["raw_value"] = result["value"]
-                            result["value"] = round(filtered, 2)
-                            result["filtered"] = True
-                            _stream_detect = result
-                            angle_deg = float(result["angle"])
-                            ctr = result["center"]
+                        try:
+                            result = _run_detection(frame, cfg)
+                            if not result.get("error"):
+                                # Apply value filter
+                                with _value_filter_lock:
+                                    filtered = _value_filter.add(float(result["value"]))
+                                result["raw_value"] = result["value"]
+                                result["value"] = round(filtered, 2)
+                                result["filtered"] = True
 
-                            # Pull debug images out of result (numpy arrays, not JSON-safe)
-                            debug_proc_img = result.pop("debug_preprocess", None)
-                            debug_bin_img = result.pop("debug_binary", None)
+                                # Pull debug images out of result (numpy arrays, not JSON-safe)
+                                # Capture them before popping
+                                debug_proc_img = result.get("debug_preprocess")
+                                debug_bin_img = result.get("debug_binary")
+                                debug_proc_ann = result.get("debug_preprocess_ann")
+                                debug_bin_ann = result.get("debug_binary_ann")
 
-                            # Encode multiple stream variants
-                            # 1. Annotated
-                            annotated = draw_needle(frame.copy(),
-                                                    ctr["x"], ctr["y"], ctr["radius"], angle_deg,
-                                                    inner_ratio=float(cfg["inner_ratio"]),
-                                                    outer_ratio=float(cfg["outer_ratio"]),
-                                                    min_angle=float(cfg["min_angle"]),
-                                                    max_angle=float(cfg["max_angle"]))
-                            _, ann_jpeg = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 50])
-                            _stream_jpeg["annotated"] = ann_jpeg.tobytes()
+                                # MUST pop all non-serializable objects before assigning to _stream_detect
+                                for k in ["debug_preprocess", "debug_binary", "debug_preprocess_ann", "debug_binary_ann"]:
+                                    result.pop(k, None)
 
-                            # 2. Raw
-                            _, raw_jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 40])
-                            _stream_jpeg["raw"] = raw_jpeg.tobytes()
+                                _stream_detect = result
+                                angle_deg = float(result["angle"])
+                                ctr = result["center"]
 
-                            # 3. Preprocessed variants
-                            if debug_proc_img is not None:
-                                # Plain
-                                _, proc_jpeg = cv2.imencode(".jpg", debug_proc_img, [cv2.IMWRITE_JPEG_QUALITY, 40])
-                                _stream_jpeg["preprocess"] = proc_jpeg.tobytes()
-                                # Annotated (pre-rendered in _run_detection)
-                                if "debug_preprocess_ann" in result:
-                                    _, proc_ann_jpeg = cv2.imencode(".jpg", result.pop("debug_preprocess_ann"), [cv2.IMWRITE_JPEG_QUALITY, 40])
-                                    _stream_jpeg["preprocess_ann"] = proc_ann_jpeg.tobytes()
+                                # Encode multiple stream variants
+                                # 1. Annotated
+                                annotated = draw_needle(frame.copy(),
+                                                        ctr["x"], ctr["y"], ctr["radius"], angle_deg,
+                                                        inner_ratio=float(cfg["inner_ratio"]),
+                                                        outer_ratio=float(cfg["outer_ratio"]),
+                                                        min_angle=float(cfg["min_angle"]),
+                                                        max_angle=float(cfg["max_angle"]))
+                                _, ann_jpeg = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 50])
+                                _stream_jpeg["annotated"] = ann_jpeg.tobytes()
 
-                            # 4. Binary variants
-                            if debug_bin_img is not None:
-                                # Plain
-                                _, bin_jpeg = cv2.imencode(".jpg", debug_bin_img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-                                _stream_jpeg["binary"] = bin_jpeg.tobytes()
-                                # Annotated (pre-rendered in _run_detection)
-                                if "debug_binary_ann" in result:
-                                    _, bin_ann_jpeg = cv2.imencode(".jpg", result.pop("debug_binary_ann"), [cv2.IMWRITE_JPEG_QUALITY, 30])
-                                    _stream_jpeg["binary_ann"] = bin_ann_jpeg.tobytes()
-                        else:
-                            _stream_detect = result
+                                # 2. Raw
+                                _, raw_jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 40])
+                                _stream_jpeg["raw"] = raw_jpeg.tobytes()
+
+                                # 3. Preprocessed variants
+                                if debug_proc_img is not None:
+                                    _, proc_jpeg = cv2.imencode(".jpg", debug_proc_img, [cv2.IMWRITE_JPEG_QUALITY, 40])
+                                    _stream_jpeg["preprocess"] = proc_jpeg.tobytes()
+                                    if debug_proc_ann is not None:
+                                        _, proc_ann_jpeg = cv2.imencode(".jpg", debug_proc_ann, [cv2.IMWRITE_JPEG_QUALITY, 40])
+                                        _stream_jpeg["preprocess_ann"] = proc_ann_jpeg.tobytes()
+
+                                # 4. Binary variants
+                                if debug_bin_img is not None:
+                                    _, bin_jpeg = cv2.imencode(".jpg", debug_bin_img, [cv2.IMWRITE_JPEG_QUALITY, 30])
+                                    _stream_jpeg["binary"] = bin_jpeg.tobytes()
+                                    if debug_bin_ann is not None:
+                                        _, bin_ann_jpeg = cv2.imencode(".jpg", debug_bin_ann, [cv2.IMWRITE_JPEG_QUALITY, 30])
+                                        _stream_jpeg["binary_ann"] = bin_ann_jpeg.tobytes()
+                            else:
+                                _stream_detect = result
+                        except Exception as e:
+                            print(f"Reader detection error: {e}")
+                            _stream_detect = {"error": str(e)}
                     last_detect = now
 
                 with _frame_buffer_lock:
