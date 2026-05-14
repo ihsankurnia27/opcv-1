@@ -98,11 +98,67 @@ Config keys: `filter_alpha` (EMA rate, default 0.15), `filter_max_jump` (spike t
 
 Light gallery theme with neon pink (#e11d48) accents. Instrument Serif + Sora fonts. Features:
 - Live MJPEG feed with detection HUD overlay (value, angle, center, status)
+- **Debug stream modes:** Annotated, Raw, Preprocessed (grayscale), Preprocessed + Ann, Binary (BW), Binary + Ann
 - Edge Cam (device stream) and Client Cam (getUserMedia) modes
 - Auto-calibrate (variance gap detection) and Manual Cal (tap-to-mark on annotated frame)
 - One-shot capture, continuous detect mode
 - Config save/load, camera enumeration, points list from server
 - In-place update (git fetch + docker compose build)
+
+## Detection Fine-Tuning Guide
+
+The web UI includes 6 stream modes for debugging. Toggle them to see exactly what the algorithm sees at each stage. Detection runs at **480px** internally (`_DETECT_USE_W`), then coords are upscaled to original resolution.
+
+### 1. Fix Flickering Binary (Lighting Instability)
+
+Switch to **Binary (BW)** — if the white needle edges flicker/pulse, the threshold is too sensitive.
+
+| Parameter | Try | Effect |
+|-----------|-----|--------|
+| `Threshold Block` | 11, 15, 21 | Higher = larger regions, ignores small lighting variations |
+| `Threshold C` | 7, 9, 12 | Higher = more aggressive binarization, washes out weaker edges |
+
+Rule: bump `threshold_block` first. Only touch `threshold_c` if edges still noisy.
+
+### 2. Fix Needle Angle Jitter (Edge Noise)
+
+Switch to **Binary + Ann** — if the binary image looks stable but the green needle line jumps between two positions, Hough line detection is seeing competing edges in the annulus.
+
+| Parameter | Try | Effect |
+|-----------|-----|--------|
+| `Blur Kernel` | 7, 9, 11 | Smoothens grayscale before threshold, fewer spurious edges |
+| `detect_method` | `radial` | Fallback to darkest-ray method — less precise but stable |
+
+Don't exceed `Blur Kernel` 11 or the actual needle edge will blur away.
+
+### 3. Smooth Residual Jitter
+
+If binary and detection look mostly correct but the reported value still bounces, tighten the temporal filters.
+
+| Parameter | Try | Effect |
+|-----------|-----|--------|
+| `Angle Kalman R` (measurement noise) | 0.3, 0.5 | Higher = filter trusts measurement less, smooths more |
+| `Angle Kalman Q` (process noise) | 0.005, 0.001 | Lower = filter assumes needle moves slowly |
+| `Filter Alpha` (EMA) | 0.10, 0.08 | Lower = more smoothing, more lag |
+
+Start with Kalman (`R`/`Q`) before reducing EMA alpha — Kalman adapts to movement speed better.
+
+### 4. Fix Center Jitter
+
+If the gauge circle jumps around frame to frame (noticed in Raw or Preprocessed + Ann):
+
+| Parameter | Try | Effect |
+|-----------|-----|--------|
+| `Center EMA` | 0.20, 0.15 | Lower = smoother center tracking, but more lag on fast changes |
+
+### Quick Workflow
+
+1. Select **Binary + Ann** in the view dropdown
+2. Check if binary edges are crisp and stable
+3. If flickering → increase `Threshold Block` / `Threshold C`
+4. If binary stable but green needle doesn't match the real gauge needle → increase `Blur Kernel`
+5. If everything looks right but value still bounces → increase `Angle Kalman R`, decrease `Angle Kalman Q`
+6. Tweak one parameter at a time, watch the HUD live
 
 ## Files
 
