@@ -48,6 +48,28 @@
 
 <!-- Heading -->
 <div class="sidebar-heading">
+    DATA MANAGEMENT
+</div>
+
+<!-- Nav Item - Data Templates -->
+<li class="nav-item">
+    <a class="nav-link" href="data-templates.php">
+    <i class="fas fa-fw fa-table"></i>
+    <span>Data Templates</span></a>
+</li>
+
+<!-- Nav Item - Data Readings -->
+<li class="nav-item">
+    <a class="nav-link" href="data-readings.php">
+    <i class="fas fa-fw fa-database"></i>
+    <span>Data Readings</span></a>
+</li>
+
+<!-- Divider -->
+<hr class="sidebar-divider">
+
+<!-- Heading -->
+<div class="sidebar-heading">
    RECORD
 </div>
 
