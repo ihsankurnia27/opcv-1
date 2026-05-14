@@ -271,14 +271,30 @@ def _reader_loop(camera_id, width, height):
                             _, raw_jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 40])
                             _stream_jpeg["raw"] = raw_jpeg.tobytes()
 
-                            # 3. Preprocessed (intermediate BGR)
+                            # 3. Preprocessed (convert to BGR for overlay)
                             if "debug_preprocess" in result:
-                                _, proc_jpeg = cv2.imencode(".jpg", result["debug_preprocess"], [cv2.IMWRITE_JPEG_QUALITY, 40])
+                                debug_proc_rgb = cv2.cvtColor(result["debug_preprocess"], cv2.COLOR_GRAY2BGR)
+                                debug_ann = draw_needle(debug_proc_rgb,
+                                                        ctr["x"], ctr["y"], ctr["radius"], angle_deg,
+                                                        inner_ratio=float(cfg["inner_ratio"]),
+                                                        outer_ratio=float(cfg["outer_ratio"]),
+                                                        min_angle=float(cfg["min_angle"]),
+                                                        max_angle=float(cfg["max_angle"]),
+                                                        color=(255, 255, 255))
+                                _, proc_jpeg = cv2.imencode(".jpg", debug_ann, [cv2.IMWRITE_JPEG_QUALITY, 40])
                                 _stream_jpeg["preprocess"] = proc_jpeg.tobytes()
 
-                            # 4. Binary
+                            # 4. Binary (convert to BGR for overlay)
                             if "debug_binary" in result:
-                                _, bin_jpeg = cv2.imencode(".jpg", result["debug_binary"], [cv2.IMWRITE_JPEG_QUALITY, 30])
+                                debug_bin_rgb = cv2.cvtColor(result["debug_binary"], cv2.COLOR_GRAY2BGR)
+                                debug_ann = draw_needle(debug_bin_rgb,
+                                                        ctr["x"], ctr["y"], ctr["radius"], angle_deg,
+                                                        inner_ratio=float(cfg["inner_ratio"]),
+                                                        outer_ratio=float(cfg["outer_ratio"]),
+                                                        min_angle=float(cfg["min_angle"]),
+                                                        max_angle=float(cfg["max_angle"]),
+                                                        color=(0, 255, 0))
+                                _, bin_jpeg = cv2.imencode(".jpg", debug_ann, [cv2.IMWRITE_JPEG_QUALITY, 30])
                                 _stream_jpeg["binary"] = bin_jpeg.tobytes()
                         else:
                             _stream_detect = result
