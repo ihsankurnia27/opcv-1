@@ -79,7 +79,7 @@ crontab -e
 ## Gauge Detection Pipeline
 
 1. Center detection (`find_gauge_center`): blob detector → HoughCircles fallback
-2. Frame resized to **320px** internally (`_DETECT_USE_W`) for ~4× faster CV ops
+2. Frame resized to **480px** internally (`_DETECT_USE_W`) for ~2× faster CV ops
 3. Coords upscaled back to original resolution after detection
 4. Optional Gaussian blur + adaptive threshold
 5. Radial sampling — pixel intensity along 360 rays at configurable `inner_ratio`/`outer_ratio`

@@ -100,7 +100,7 @@ python push_readings.py --oneshot
 ## Gauge Detection Pipeline
 
 1. Center detection (blob detector → HoughCircles fallback)
-2. Frame resize to 320px internally for ~4× faster CV ops
+2. Frame resize to 480px internally for ~2× faster CV ops
 3. Optional Gaussian blur + adaptive threshold
 4. Radial sampling — pixel intensity along 360 rays
 5. Darkest ray = needle position
