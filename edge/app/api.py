@@ -132,7 +132,7 @@ def _reinit_temporal(cfg):
         _angle_kalman.Q = float(cfg.get("angle_kalman_Q", 0.01))
 
 _DETECT_MAX_W = 640
-_DETECT_USE_W = 320  # internal detection resolution for speed (4× fewer pixels)
+_DETECT_USE_W = 480  # internal detection resolution for speed
 
 
 def _probe_native_resolution(camera_id):
@@ -488,9 +488,13 @@ def _run_detection(frame, cfg):
         debug_binary = gray
 
     # Upscale debug images to avoid "blurry as fuck" view
-    if scale != 1.0:
-        debug_proc = cv2.resize(debug_proc, (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
-        debug_binary = cv2.resize(debug_binary, (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
+    # if scale != 1.0:
+    #     debug_proc = cv2.resize(debug_proc, (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
+    #     debug_binary = cv2.resize(debug_binary, (w_orig, h_orig), interpolation=cv2.INTER_NEAREST)
+
+    # Convert debug_proc to grayscale (match what detection sees)
+    if debug_proc is not None:
+        debug_proc = cv2.cvtColor(debug_proc, cv2.COLOR_BGR2GRAY)
 
     min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
     min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
