@@ -796,6 +796,41 @@ input[type="password"] { letter-spacing: .2em; }
       </div>
     </div>
 
+    <div class="card">
+      <div class="card-title" style="cursor:pointer;user-select:none" onclick="toggleTuningGuide()">
+        <span id="tg-arrow">▶</span> Tuning Guide
+      </div>
+      <div id="tuning-guide" style="display:none;font-size:.75rem;line-height:1.6;color:var(--md-on-surface-variant)">
+        <p style="margin-bottom:8px"><strong>Quick workflow:</strong> Select <strong>Binary + Ann</strong> view → tweak params → watch HUD live.</p>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">1. Binary flickering? → Lighting unstable</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Threshold Block</code></td><td style="padding:2px 6px">11, 15, 21</td><td style="padding:2px 6px">larger = less noise</td></tr>
+          <tr><td style="padding:2px 6px"><code>Threshold C</code></td><td style="padding:2px 6px">7, 9, 12</td><td style="padding:2px 6px">more aggressive threshold</td></tr>
+        </table>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">2. Binary stable, needle jumps? → Edge noise</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Blur Kernel</code></td><td style="padding:2px 6px">7, 9, 11</td><td style="padding:2px 6px">soften grayscale before threshold</td></tr>
+          <tr><td style="padding:2px 6px"><code>detect_method</code></td><td style="padding:2px 6px">radial</td><td style="padding:2px 6px">stable fallback, less precise</td></tr>
+        </table>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">3. Value still bouncy? → Smoothing</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Kalman R</code></td><td style="padding:2px 6px">0.3 ↔ 0.5</td><td style="padding:2px 6px">↑ = smoother (distrust measurement)</td></tr>
+          <tr><td style="padding:2px 6px"><code>Kalman Q</code></td><td style="padding:2px 6px">0.005 ↔ 0.001</td><td style="padding:2px 6px">↓ = smoother (slow needle assumption)</td></tr>
+          <tr><td style="padding:2px 6px"><code>Filter Alpha</code></td><td style="padding:2px 6px">0.10 ↔ 0.08</td><td style="padding:2px 6px">↓ = more EMA smoothing</td></tr>
+        </table>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">4. Circle jittering? → Center unstable</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Center EMA</code></td><td style="padding:2px 6px">0.20 ↔ 0.15</td><td style="padding:2px 6px">↓ = smoother, slight lag</td></tr>
+        </table>
+
+        <p style="margin-top:4px;opacity:.7">Tweak one param at a time. Watch Binary + Ann to see effect immediately.</p>
+      </div>
+    </div>
+
   </div>
 
   <!-- COL 2: LIVE FEED -->
@@ -1779,6 +1814,18 @@ async function runUpdate() {
 function onStreamModeChange() {
   if (streamActive && cameraMode === 'edge') {
     startEdgeStream();
+  }
+}
+
+function toggleTuningGuide() {
+  const el = q('tuning-guide');
+  const arrow = q('tg-arrow');
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    arrow.textContent = '▼';
+  } else {
+    el.style.display = 'none';
+    arrow.textContent = '▶';
   }
 }
 
