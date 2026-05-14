@@ -1450,7 +1450,12 @@ async function loadConfig() {
     const c = await api('GET', '/api/config');
     for (const k of Object.keys(c)) {
       const el = q(k);
-      if (el && el.tagName !== 'SELECT') el.value = c[k];
+      if (!el) continue;
+      if (el.type === 'checkbox') {
+        el.checked = c[k] === true || c[k] === 1 || c[k] === '1';
+      } else {
+        el.value = c[k];
+      }
     }
     const resEl = q('cam_resolution');
     if (resEl && c.cam_width && c.cam_height) {
@@ -1480,11 +1485,11 @@ async function loadConfig() {
         camSel.value = String(c.camera_id);
       }
     }
-    const checkboxFields = ['use_clahe'];
-    checkboxFields.forEach(k => {
-      const el = q(k);
-      if (el && c[k] !== undefined) el.checked = !!c[k];
-    });
+    // const checkboxFields = ['use_clahe'];
+    // checkboxFields.forEach(k => {
+    //   const el = q(k);
+    //   if (el && c[k] !== undefined) el.checked = !!c[k];
+    // });
     toast('[OK] Config loaded');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
