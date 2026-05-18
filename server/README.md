@@ -150,17 +150,36 @@ python push_readings.py --oneshot
 └── server/README.md         # This file
 ```
 
-## Git Workflow
+## Git & Deployment Workflow
+
+### 1. Development (Main Server)
+Edit code, commit, and push to origin.
+```bash
+git add -A
+git commit -m "feat: description"
+git push
+```
+
+### 2. Server Deployment (10.8.0.3)
+**Assets Note**: The server uses SB Admin 2 which requires Gulp. Docker containers do not build these assets. You MUST build them locally before syncing.
 
 ```bash
-# Main server — edit code, commit, push
-cd /home/ihsan/opcv-1
-git add -A
-git commit -m "what changed"
-git push
+# A. Build assets locally
+cd server
+npm install
+gulp build  # compiles SCSS, minifies JS, syncs vendor/
 
-# Edge device — auto-pulls every 10 min via cron
-# Or manual:
+# B. Sync to remote (10.8.0.3)
+# Replace '~/key1' with your private key path
+rsync -avz -e "ssh -i ~/key1" --exclude='node_modules' ./server/ youri@10.8.0.3:/home/youri/opcv-1/server/
+
+# C. Restart containers on remote
+ssh -i ~/key1 youri@10.8.0.3 "cd /home/youri/opcv-1/server && docker compose up -d"
+```
+
+### 3. Edge Device (10.8.0.4)
+Edge device pulls from GitHub every 10 min via cron. For manual update:
+```bash
 ssh root@10.8.0.4 "cd /root/opcv-1 && git pull && cd /root/edge && docker compose up -d --build"
 ```
 

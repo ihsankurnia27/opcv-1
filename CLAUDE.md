@@ -38,16 +38,30 @@ Edge device: cron git pull every 10min → auto rebuild
 
 ## Deployment
 
+### 1. Server (10.8.0.3)
+
+**IMPORTANT**: `docker compose` does NOT build frontend assets (CSS/JS/Vendor). You MUST build locally and sync.
+
 ```bash
-# Server
-ssh -i ~/key1 youri@10.8.0.3
-cd /home/youri/opcv-1/server && docker compose up -d
+# A. Build assets locally (requires Node + Gulp)
+cd server
+npm install
+gulp build    # Compiles SCSS, minifies JS, copies vendor files
 
-# Edge (password: orangepi)
-sshpass -p orangepi ssh root@10.8.0.4
-cd /root/edge && docker compose up -d
+# B. Sync code and assets to server
+# Use rsync to ensure vendor/, css/, and js/ are included (node_modules excluded)
+rsync -avz --exclude='node_modules' ./server/ youri@10.8.0.3:/home/youri/opcv-1/server/
 
-# Edge manual update (password: orangepi)
+# C. Deploy on remote
+ssh -i ~/key1 youri@10.8.0.3 "cd /home/youri/opcv-1/server && docker compose up -d --build"
+```
+
+### 2. Edge (10.8.0.4)
+
+Password: `orangepi`
+
+```bash
+# Manual update
 sshpass -p orangepi ssh root@10.8.0.4 "cd /root/opcv-1 && git pull && cd /root/edge && docker compose up -d --build"
 ```
 
