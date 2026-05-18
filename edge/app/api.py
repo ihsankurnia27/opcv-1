@@ -222,12 +222,11 @@ def _reader_loop(camera_id, width, height):
     if not cap.isOpened():
         return
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    # Cap capture to stream max for performance
-    if width <= 0 or height <= 0:
-        width, height = _DETECT_MAX_W, int(_DETECT_MAX_W * 3 / 4)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
+    cap.set(cv2.CAP_PROP_FPS, 60)
+    # Only set resolution if explicitly requested, otherwise use camera default to avoid stretching
+    if width > 0 and height > 0:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     last_detect = 0
     try:
@@ -239,6 +238,23 @@ def _reader_loop(camera_id, width, height):
                 # Invalidate raw JPEG cache — stream re-encodes on demand at Q30
                 with _raw_jpeg_lock:
                     _raw_jpeg_cache[camera_id] = None
+
+                # Update raw and annotated frames every capture iteration for high FPS streaming
+                _stream_jpeg["raw"] = frame
+
+                # If we have a recent successful detection, draw overlay on every frame
+                if _stream_detect and not _stream_detect.get("error"):
+                    with _detect_config_lock:
+                        cfg = _detect_config.copy() if _detect_config else load_config()
+                    angle_deg = float(_stream_detect["angle"])
+                    ctr = _stream_detect["center"]
+                    annotated = draw_needle(frame.copy(),
+                                            ctr["x"], ctr["y"], ctr["radius"], angle_deg,
+                                            inner_ratio=float(cfg["inner_ratio"]),
+                                            outer_ratio=float(cfg["outer_ratio"]),
+                                            min_angle=float(cfg["min_angle"]),
+                                            max_angle=float(cfg["max_angle"]))
+                    _stream_jpeg["annotated"] = annotated
 
                 if now - last_detect >= 0.2:
                     with _detect_config_lock:
