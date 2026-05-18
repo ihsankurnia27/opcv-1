@@ -242,6 +242,25 @@ body {
   margin: 0 auto;
 }
 
+@media (min-width: 961px) {
+  .config-col {
+    position: sticky;
+    top: 136px;
+    height: calc(100vh - 152px);
+    overflow-y: auto;
+    padding-right: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--md-outline-variant) transparent;
+  }
+  .config-col::-webkit-scrollbar {
+    width: 6px;
+  }
+  .config-col::-webkit-scrollbar-thumb {
+    background-color: var(--md-outline-variant);
+    border-radius: 10px;
+  }
+}
+
 @media (max-width: 960px) {
   .main-grid { grid-template-columns: 1fr; }
 }
