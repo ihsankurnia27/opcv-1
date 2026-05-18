@@ -105,7 +105,7 @@ _bg_stop = threading.Event()
 
 _detect_config = {}
 _detect_config_lock = threading.Lock()
-_stream_jpeg = {}          # mode -> bytes (MJPEG buffer)
+_stream_jpeg = {}          # mode -> ndarray (raw frames)
 _stream_detect = None
 
 _value_filter_lock = threading.Lock()
@@ -269,7 +269,7 @@ def _reader_loop(camera_id, width, height):
                                 angle_deg = float(result["angle"])
                                 ctr = result["center"]
 
-                                # Encode multiple stream variants
+                                # Store frames for on-demand stream encoding
                                 # 1. Annotated
                                 annotated = draw_needle(frame.copy(),
                                                         ctr["x"], ctr["y"], ctr["radius"], angle_deg,
@@ -277,28 +277,20 @@ def _reader_loop(camera_id, width, height):
                                                         outer_ratio=float(cfg["outer_ratio"]),
                                                         min_angle=float(cfg["min_angle"]),
                                                         max_angle=float(cfg["max_angle"]))
-                                _, ann_jpeg = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 50])
-                                _stream_jpeg["annotated"] = ann_jpeg.tobytes()
+                                _stream_jpeg["annotated"] = annotated
+                                _stream_jpeg["raw"] = frame
 
-                                # 2. Raw
-                                _, raw_jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 40])
-                                _stream_jpeg["raw"] = raw_jpeg.tobytes()
-
-                                # 3. Preprocessed variants
+                                # 2. Preprocessed variants
                                 if debug_proc_img is not None:
-                                    _, proc_jpeg = cv2.imencode(".jpg", debug_proc_img, [cv2.IMWRITE_JPEG_QUALITY, 40])
-                                    _stream_jpeg["preprocess"] = proc_jpeg.tobytes()
+                                    _stream_jpeg["preprocess"] = debug_proc_img
                                     if debug_proc_ann is not None:
-                                        _, proc_ann_jpeg = cv2.imencode(".jpg", debug_proc_ann, [cv2.IMWRITE_JPEG_QUALITY, 40])
-                                        _stream_jpeg["preprocess_ann"] = proc_ann_jpeg.tobytes()
+                                        _stream_jpeg["preprocess_ann"] = debug_proc_ann
 
-                                # 4. Binary variants
+                                # 3. Binary variants
                                 if debug_bin_img is not None:
-                                    _, bin_jpeg = cv2.imencode(".jpg", debug_bin_img, [cv2.IMWRITE_JPEG_QUALITY, 30])
-                                    _stream_jpeg["binary"] = bin_jpeg.tobytes()
+                                    _stream_jpeg["binary"] = debug_bin_img
                                     if debug_bin_ann is not None:
-                                        _, bin_ann_jpeg = cv2.imencode(".jpg", debug_bin_ann, [cv2.IMWRITE_JPEG_QUALITY, 30])
-                                        _stream_jpeg["binary_ann"] = bin_ann_jpeg.tobytes()
+                                        _stream_jpeg["binary_ann"] = debug_bin_ann
                             else:
                                 _stream_detect = result
                         except Exception as e:
@@ -327,45 +319,53 @@ def _get_frame(camera_id):
     return None
 
 
-# --- MJPEG stream (raw only) ---
+# --- MJPEG stream ---
 
-def _generate_mjpeg(camera_id, width, height, mode="annotated"):
+def _generate_mjpeg(camera_id, width, height, mode="annotated", quality=30, fps=5):
     _start_reader(camera_id, width, height)
+    last_frame_time = 0
     try:
         while True:
+            now = time.time()
+            if now - last_frame_time < (1.0 / fps):
+                time.sleep(0.01)
+                continue
+
             # Use requested mode, fallback to annotated
-            jpeg = _stream_jpeg.get(mode) or _stream_jpeg.get("annotated")
-            if jpeg is not None:
+            frame = _stream_jpeg.get(mode)
+            if frame is None:
+                frame = _stream_jpeg.get("annotated")
+
+            if frame is None:
+                # Fallback to buffer if reader haven't populated _stream_jpeg yet
+                with _frame_buffer_lock:
+                    buf = _frame_buffer.get(camera_id)
+                if buf is not None:
+                    frame = buf["frame"]
+
+            if frame is not None:
+                # Resize if requested resolution differs from frame
+                fh, fw = frame.shape[:2]
+                if width > 0 and height > 0 and (fw != width or fh != height):
+                    frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+
+                _, buf2 = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                jpeg_bytes = buf2.tobytes()
+
                 yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
+                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
+                last_frame_time = now
             else:
-                # Encode raw frame on demand at Q30, cache between captures
-                with _raw_jpeg_lock:
-                    jpeg_bytes = _raw_jpeg_cache.get(camera_id)
-                if jpeg_bytes is None:
-                    with _frame_buffer_lock:
-                        buf = _frame_buffer.get(camera_id)
-                    if buf is not None:
-                        _, buf2 = cv2.imencode(".jpg", buf["frame"], [cv2.IMWRITE_JPEG_QUALITY, 30])
-                        jpeg_bytes = buf2.tobytes()
-                        with _raw_jpeg_lock:
-                            _raw_jpeg_cache[camera_id] = jpeg_bytes
-                if jpeg_bytes is not None:
-                    yield (b"--frame\r\n"
-                           b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
-                else:
-                    time.sleep(0.05)
-            time.sleep(0.01) # Yield to other threads
+                time.sleep(0.1)
     except GeneratorExit:
         pass
 
 
 @app.get("/api/stream")
-def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0), mode: str = Query("annotated")):
-    if w <= 0 or h <= 0:
-        w, h = _probe_native_resolution(camera_id)
+def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0),
+                 mode: str = Query("annotated"), q: int = Query(30), fps: int = Query(5)):
     return StreamingResponse(
-        _generate_mjpeg(camera_id, w, h, mode=mode),
+        _generate_mjpeg(camera_id, w, h, mode=mode, quality=q, fps=fps),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 

@@ -853,14 +853,28 @@ input[type="password"] { letter-spacing: .2em; }
           <button class="feed-tab active" data-mode="edge" onclick="setCameraMode('edge')">Edge Cam</button>
           <button class="feed-tab" data-mode="client" onclick="setCameraMode('client')">Client Cam</button>
         </div>
-        <div class="feed-ctrl" style="margin-left: 8px;">
-          <select id="stream_mode" class="btn btn-xs" style="width: auto; height: 32px; padding: 0 12px; border-radius: 16px;" onchange="onStreamModeChange()">
+        <div class="feed-ctrl" style="margin-left: 8px; display: flex; gap: 4px; align-items: center;">
+          <select id="stream_mode" class="btn btn-xs" style="width: auto; height: 32px; padding: 0 12px; border-radius: 16px;" onchange="onStreamParamsChange()">
             <option value="annotated">Annotated</option>
             <option value="raw">Raw</option>
             <option value="preprocess">Preprocessed</option>
             <option value="preprocess_ann">Preprocessed + Ann</option>
             <option value="binary">Binary (BW)</option>
             <option value="binary_ann">Binary + Ann</option>
+          </select>
+          <select id="stream_fps" class="btn btn-xs" style="width: auto; height: 32px; padding: 0 8px; border-radius: 16px;" onchange="onStreamParamsChange()">
+            <option value="1">1 FPS</option>
+            <option value="2">2 FPS</option>
+            <option value="5" selected>5 FPS</option>
+            <option value="10">10 FPS</option>
+            <option value="15">15 FPS</option>
+          </select>
+          <select id="stream_quality" class="btn btn-xs" style="width: auto; height: 32px; padding: 0 8px; border-radius: 16px;" onchange="onStreamParamsChange()">
+            <option value="10">Q10</option>
+            <option value="20">Q20</option>
+            <option value="30" selected>Q30</option>
+            <option value="50">Q50</option>
+            <option value="80">Q80</option>
           </select>
         </div>
         <div class="feed-ctrl">
@@ -1064,7 +1078,9 @@ function startEdgeStream() {
   const w = res[0] || 0;
   const h = res[1] || 0;
   const mode = q('stream_mode').value;
-  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h + '&mode=' + mode;
+  const fps = q('stream_fps').value;
+  const qval = q('stream_quality').value;
+  const url = API + '/api/stream?camera_id=' + camId + '&w=' + w + '&h=' + h + '&mode=' + mode + '&fps=' + fps + '&q=' + qval;
   const img = q('feed-stream');
   q('feed-placeholder').style.display = 'none';
   q('feed-video').style.display = 'none';
@@ -1833,7 +1849,7 @@ async function runUpdate() {
   setTimeout(() => { btn.disabled = false; btn.textContent = 'Update'; checkHealth(); fetchVersion(); }, 5000);
 }
 
-function onStreamModeChange() {
+function onStreamParamsChange() {
   if (streamActive && cameraMode === 'edge') {
     startEdgeStream();
   }
