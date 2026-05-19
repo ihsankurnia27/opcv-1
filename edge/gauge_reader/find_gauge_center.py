@@ -14,9 +14,11 @@ def _hough_circles(
     min_dist_ratio=0.3,
     min_radius_ratio=0.05,
     max_radius_ratio=0.45,
+    canny_low=50,
+    canny_high=150,
 ):
     """Canny edge + HoughCircles with gradient voting."""
-    edges = cv2.Canny(gray, 50, 150)
+    edges = cv2.Canny(gray, canny_low, canny_high)
     circles = cv2.HoughCircles(
         gray,
         cv2.HOUGH_GRADIENT,
@@ -34,10 +36,30 @@ def _hough_circles(
 
 
 def _contour_circularity(
-    gray, image_w, image_h, min_radius_ratio=0.05, max_radius_ratio=0.45, min_circularity=0.7
+    gray,
+    image_w,
+    image_h,
+    min_radius_ratio=0.05,
+    max_radius_ratio=0.45,
+    min_circularity=0.7,
+    canny_low=50,
+    canny_high=150,
+    use_adaptive=False,
+    edge_dilate=0,
 ):
     """Find largest contour with circularity > 0.7, fit enclosing circle."""
-    edges = cv2.Canny(gray, 50, 150)
+    if use_adaptive:
+        edges = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        )
+        edges = cv2.bitwise_not(edges)
+    else:
+        edges = cv2.Canny(gray, canny_low, canny_high)
+
+    if edge_dilate > 0:
+        kernel = np.ones((edge_dilate, edge_dilate), np.uint8)
+        edges = cv2.dilate(edges, kernel, iterations=1)
+
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     best = None
     best_score = 0
@@ -81,6 +103,11 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True, **
             circle_min_radius_ratio (default 0.05)
             circle_max_radius_ratio (default 0.45)
             circle_min_circularity (default 0.7)
+            circle_canny_low (default 50)
+            circle_canny_high (default 150)
+            circle_adaptive_thresh (default False)
+            circle_dilate (default 0)
+            circle_clahe_clip (default 2.0)
 
     Returns:
         (cx, cy, radius) or None
@@ -89,7 +116,9 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True, **
     h, w = gray.shape[:2]
 
     if use_clahe:
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(
+            clipLimit=kwargs.get("circle_clahe_clip", 2.0), tileGridSize=(8, 8)
+        )
         gray = clahe.apply(gray)
 
     # Strategy A: HoughCircles on Canny edges
@@ -102,6 +131,8 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True, **
         param2=kwargs.get("circle_hough_param2", 50),
         min_radius_ratio=kwargs.get("circle_min_radius_ratio", 0.05),
         max_radius_ratio=kwargs.get("circle_max_radius_ratio", 0.45),
+        canny_low=kwargs.get("circle_canny_low", 50),
+        canny_high=kwargs.get("circle_canny_high", 150),
     )
     if hough_result is not None:
         return hough_result
@@ -114,6 +145,10 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True, **
         min_radius_ratio=kwargs.get("circle_min_radius_ratio", 0.05),
         max_radius_ratio=kwargs.get("circle_max_radius_ratio", 0.45),
         min_circularity=kwargs.get("circle_min_circularity", 0.7),
+        canny_low=kwargs.get("circle_canny_low", 50),
+        canny_high=kwargs.get("circle_canny_high", 150),
+        use_adaptive=kwargs.get("circle_adaptive_thresh", False),
+        edge_dilate=kwargs.get("circle_dilate", 0),
     )
     if contour_result is not None:
         return contour_result
