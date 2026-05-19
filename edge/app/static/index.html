@@ -235,15 +235,15 @@ body {
 .main-grid {
   padding: 16px;
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 280px 340px 1fr;
   gap: 16px;
   align-items: start;
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
 }
 
 @media (min-width: 961px) {
-  .config-col {
+  .config-col, .workflow-col {
     position: sticky;
     top: 136px;
     height: calc(100vh - 152px);
@@ -252,17 +252,23 @@ body {
     scrollbar-width: thin;
     scrollbar-color: var(--md-outline-variant) transparent;
   }
-  .config-col::-webkit-scrollbar {
+  .config-col::-webkit-scrollbar, .workflow-col::-webkit-scrollbar {
     width: 6px;
   }
-  .config-col::-webkit-scrollbar-thumb {
+  .config-col::-webkit-scrollbar-thumb, .workflow-col::-webkit-scrollbar-thumb {
     background-color: var(--md-outline-variant);
     border-radius: 10px;
   }
 }
 
+@media (max-width: 1200px) {
+  .main-grid { grid-template-columns: 340px 1fr; }
+  .workflow-col { grid-column: span 2; position: static; height: auto; padding-right: 0; }
+}
+
 @media (max-width: 960px) {
   .main-grid { grid-template-columns: 1fr; }
+  .workflow-col { grid-column: span 1; }
 }
 
 /* CARDS — MD3 filled surface */
@@ -701,7 +707,72 @@ input[type="password"] { letter-spacing: .2em; }
 
 <div class="main-grid">
 
-  <!-- COL 1: CONFIG -->
+  <!-- COL 1: WORKFLOW & GUIDE -->
+  <div class="workflow-col">
+    <div class="card">
+      <div class="card-title">Detection Pipeline</div>
+      <div style="font-size:.75rem; color:var(--md-on-surface-variant); line-height:1.6">
+        <div style="margin-bottom:12px">
+          <strong style="color:var(--md-primary)">1. Preprocessing</strong><br>
+          LAB color conversion + CLAHE normalization for lighting, followed by Bilateral denoising.
+        </div>
+        <div style="margin-bottom:12px">
+          <strong style="color:var(--md-primary)">2. Circle Detection</strong><br>
+          3-strategy cascade: Hough Gradient → Contour Circularity → Temporal EMA Prior.
+        </div>
+        <div style="margin-bottom:12px">
+          <strong style="color:var(--md-primary)">3. Needle Detection</strong><br>
+          Multi-strategy voting: Line Hough transform + Frame Difference + Radial fallbacks.
+        </div>
+        <div>
+          <strong style="color:var(--md-primary)">4. Smoothing</strong><br>
+          Angle Kalman filter + Value Median filtering & EMA to eliminate jitter.
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Tuning Guide</div>
+      <div id="tuning-guide" style="font-size:.75rem;line-height:1.6;color:var(--md-on-surface-variant)">
+        <p style="margin-bottom:8px"><strong>Quick workflow:</strong> Select <strong>Binary + Ann</strong> view → tweak params → watch HUD live.</p>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">1. Binary flickering? → Lighting unstable</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Threshold Block</code></td><td style="padding:2px 6px">11, 15, 21</td><td style="padding:2px 6px">larger = less noise</td></tr>
+          <tr><td style="padding:2px 6px"><code>Threshold C</code></td><td style="padding:2px 6px">7, 9, 12</td><td style="padding:2px 6px">more aggressive threshold</td></tr>
+        </table>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">2. Binary stable, needle jumps? → Edge noise</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Blur Kernel</code></td><td style="padding:2px 6px">7, 9, 11</td><td style="padding:2px 6px">soften grayscale before threshold</td></tr>
+          <tr><td style="padding:2px 6px"><code>detect_method</code></td><td style="padding:2px 6px">radial</td><td style="padding:2px 6px">stable fallback, less precise</td></tr>
+        </table>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">3. Value still bouncy? → Smoothing</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Kalman R</code></td><td style="padding:2px 6px">0.3 ↔ 0.5</td><td style="padding:2px 6px">↑ = smoother (distrust measurement)</td></tr>
+          <tr><td style="padding:2px 6px"><code>Kalman Q</code></td><td style="padding:2px 6px">0.005 ↔ 0.001</td><td style="padding:2px 6px">↓ = smoother (slow needle assumption)</td></tr>
+          <tr><td style="padding:2px 6px"><code>Filter Alpha</code></td><td style="padding:2px 6px">0.10 ↔ 0.08</td><td style="padding:2px 6px">↓ = more EMA smoothing</td></tr>
+        </table>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">4. Circle jittering? → Center unstable</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Center EMA</code></td><td style="padding:2px 6px">0.20 ↔ 0.15</td><td style="padding:2px 6px">↓ = smoother, slight lag</td></tr>
+        </table>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">5. Circle detection failing?</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Hough Param 1/2</code></td><td style="padding:2px 6px">↑ for edges</td></tr>
+          <tr><td style="padding:2px 6px"><code>Min Circularity</code></td><td style="padding:2px 6px">↓ to allow less perfect circles</td></tr>
+          <tr><td style="padding:2px 6px"><code>Radius Ratios</code></td><td style="padding:2px 6px">adjust based on gauge size</td></tr>
+        </table>
+
+        <p style="margin-top:4px;opacity:.7">Tweak one param at a time. Watch Binary + Ann to see effect immediately.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- COL 2: CONFIG -->
   <div class="config-col">
 
     <div class="card">
@@ -840,48 +911,6 @@ input[type="password"] { letter-spacing: .2em; }
       <div class="card-title">Schedule</div>
       <div class="field-row single">
         <div class="field-group"><label>Interval (seconds)</label><input id="interval_seconds" type="number" min="60" value="3600"><div class="help">3600s = 1 hour</div></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title" style="cursor:pointer;user-select:none" onclick="toggleTuningGuide()">
-        <span id="tg-arrow">▶</span> Tuning Guide
-      </div>
-      <div id="tuning-guide" style="display:none;font-size:.75rem;line-height:1.6;color:var(--md-on-surface-variant)">
-        <p style="margin-bottom:8px"><strong>Quick workflow:</strong> Select <strong>Binary + Ann</strong> view → tweak params → watch HUD live.</p>
-
-        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">1. Binary flickering? → Lighting unstable</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
-          <tr><td style="padding:2px 6px"><code>Threshold Block</code></td><td style="padding:2px 6px">11, 15, 21</td><td style="padding:2px 6px">larger = less noise</td></tr>
-          <tr><td style="padding:2px 6px"><code>Threshold C</code></td><td style="padding:2px 6px">7, 9, 12</td><td style="padding:2px 6px">more aggressive threshold</td></tr>
-        </table>
-
-        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">2. Binary stable, needle jumps? → Edge noise</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
-          <tr><td style="padding:2px 6px"><code>Blur Kernel</code></td><td style="padding:2px 6px">7, 9, 11</td><td style="padding:2px 6px">soften grayscale before threshold</td></tr>
-          <tr><td style="padding:2px 6px"><code>detect_method</code></td><td style="padding:2px 6px">radial</td><td style="padding:2px 6px">stable fallback, less precise</td></tr>
-        </table>
-
-        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">3. Value still bouncy? → Smoothing</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
-          <tr><td style="padding:2px 6px"><code>Kalman R</code></td><td style="padding:2px 6px">0.3 ↔ 0.5</td><td style="padding:2px 6px">↑ = smoother (distrust measurement)</td></tr>
-          <tr><td style="padding:2px 6px"><code>Kalman Q</code></td><td style="padding:2px 6px">0.005 ↔ 0.001</td><td style="padding:2px 6px">↓ = smoother (slow needle assumption)</td></tr>
-          <tr><td style="padding:2px 6px"><code>Filter Alpha</code></td><td style="padding:2px 6px">0.10 ↔ 0.08</td><td style="padding:2px 6px">↓ = more EMA smoothing</td></tr>
-        </table>
-
-        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">4. Circle jittering? → Center unstable</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
-          <tr><td style="padding:2px 6px"><code>Center EMA</code></td><td style="padding:2px 6px">0.20 ↔ 0.15</td><td style="padding:2px 6px">↓ = smoother, slight lag</td></tr>
-        </table>
-
-        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">5. Circle detection failing?</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
-          <tr><td style="padding:2px 6px"><code>Hough Param 1/2</code></td><td style="padding:2px 6px">↑ for edges</td></tr>
-          <tr><td style="padding:2px 6px"><code>Min Circularity</code></td><td style="padding:2px 6px">↓ to allow less perfect circles</td></tr>
-          <tr><td style="padding:2px 6px"><code>Radius Ratios</code></td><td style="padding:2px 6px">adjust based on gauge size</td></tr>
-        </table>
-
-        <p style="margin-top:4px;opacity:.7">Tweak one param at a time. Watch Binary + Ann to see effect immediately.</p>
       </div>
     </div>
 
@@ -1903,18 +1932,6 @@ async function runUpdate() {
 function onStreamParamsChange() {
   if (streamActive && cameraMode === 'edge') {
     startEdgeStream();
-  }
-}
-
-function toggleTuningGuide() {
-  const el = q('tuning-guide');
-  const arrow = q('tg-arrow');
-  if (el.style.display === 'none') {
-    el.style.display = 'block';
-    arrow.textContent = '▼';
-  } else {
-    el.style.display = 'none';
-    arrow.textContent = '▶';
   }
 }
 
