@@ -18,10 +18,10 @@ def _hough_circles(
     """Canny edge + HoughCircles with gradient voting."""
     edges = cv2.Canny(gray, 50, 150)
     circles = cv2.HoughCircles(
-        edges,
+        gray,
         cv2.HOUGH_GRADIENT,
         dp=dp,
-        minDist=image_h * min_dist_ratio,
+        minDist=int(image_h * min_dist_ratio),
         param1=param1,
         param2=param2,
         minRadius=int(image_w * min_radius_ratio),
@@ -34,7 +34,7 @@ def _hough_circles(
 
 
 def _contour_circularity(
-    gray, image_w, image_h, min_radius_ratio=0.05, min_circularity=0.7
+    gray, image_w, image_h, min_radius_ratio=0.05, max_radius_ratio=0.45, min_circularity=0.7
 ):
     """Find largest contour with circularity > 0.7, fit enclosing circle."""
     edges = cv2.Canny(gray, 50, 150)
@@ -42,9 +42,10 @@ def _contour_circularity(
     best = None
     best_score = 0
     min_area = np.pi * (image_w * min_radius_ratio) ** 2
+    max_area = np.pi * (image_w * max_radius_ratio) ** 2
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < min_area:
+        if area < min_area or area > max_area:
             continue
         perimeter = cv2.arcLength(cnt, True)
         if perimeter < 1:
@@ -99,7 +100,6 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True, **
         dp=kwargs.get("circle_hough_dp", 1.2),
         param1=kwargs.get("circle_hough_param1", 100),
         param2=kwargs.get("circle_hough_param2", 50),
-        min_dist_ratio=kwargs.get("circle_min_dist_ratio", 0.3),
         min_radius_ratio=kwargs.get("circle_min_radius_ratio", 0.05),
         max_radius_ratio=kwargs.get("circle_max_radius_ratio", 0.45),
     )
@@ -112,6 +112,7 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True, **
         w,
         h,
         min_radius_ratio=kwargs.get("circle_min_radius_ratio", 0.05),
+        max_radius_ratio=kwargs.get("circle_max_radius_ratio", 0.45),
         min_circularity=kwargs.get("circle_min_circularity", 0.7),
     )
     if contour_result is not None:
