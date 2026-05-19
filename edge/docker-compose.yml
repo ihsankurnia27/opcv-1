@@ -23,8 +23,8 @@ services:
       - /usr/libexec/docker/cli-plugins/docker-compose:/usr/local/lib/docker/cli-plugins/docker-compose:ro
     devices:
       - /dev/video0:/dev/video0
-      - /dev/video1:/dev/video1
       - /dev/video2:/dev/video2
+      - /dev/video3:/dev/video3
     networks:
       - uvls-net
 
