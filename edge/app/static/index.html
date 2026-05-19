@@ -769,6 +769,23 @@ input[type="password"] { letter-spacing: .2em; }
     </div>
 
     <div class="card">
+      <div class="card-title">Circle Tuning</div>
+      <div class="field-row">
+        <div class="field-group"><label>Hough Param 1</label><input id="circle_hough_param1" type="number" step="1" value="100"></div>
+        <div class="field-group"><label>Hough Param 2</label><input id="circle_hough_param2" type="number" step="1" value="30"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Hough DP</label><input id="circle_hough_dp" type="number" step="0.1" value="1.0"></div>
+        <div class="field-group"><label>Min Circularity</label><input id="circle_min_circularity" type="number" step="0.01" value="0.8"></div>
+      </div>
+      <div class="field-row three">
+        <div class="field-group"><label>Min Dist Ratio</label><input id="circle_min_dist_ratio" type="number" step="0.05" value="0.5"></div>
+        <div class="field-group"><label>Min Radius Ratio</label><input id="circle_min_radius_ratio" type="number" step="0.05" value="0.1"></div>
+        <div class="field-group"><label>Max Radius Ratio</label><input id="circle_max_radius_ratio" type="number" step="0.05" value="0.5"></div>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Detection</div>
       <div class="field-row three">
         <div class="field-group"><label>Y Offset</label><input id="center_offset_y" type="number" value="0"><div class="help">px, + = down</div></div>
@@ -855,6 +872,13 @@ input[type="password"] { letter-spacing: .2em; }
         <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">4. Circle jittering? → Center unstable</div>
         <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
           <tr><td style="padding:2px 6px"><code>Center EMA</code></td><td style="padding:2px 6px">0.20 ↔ 0.15</td><td style="padding:2px 6px">↓ = smoother, slight lag</td></tr>
+        </table>
+
+        <div style="margin-bottom:6px;font-weight:500;color:var(--md-on-surface)">5. Circle detection failing?</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+          <tr><td style="padding:2px 6px"><code>Hough Param 1/2</code></td><td style="padding:2px 6px">↑ for edges</td></tr>
+          <tr><td style="padding:2px 6px"><code>Min Circularity</code></td><td style="padding:2px 6px">↓ to allow less perfect circles</td></tr>
+          <tr><td style="padding:2px 6px"><code>Radius Ratios</code></td><td style="padding:2px 6px">adjust based on gauge size</td></tr>
         </table>
 
         <p style="margin-top:4px;opacity:.7">Tweak one param at a time. Watch Binary + Ann to see effect immediately.</p>
@@ -1338,7 +1362,9 @@ async function startStreamDetection() {
   ['min_angle','max_angle','min_value','max_value','center_offset_y',
    'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
    'filter_alpha','filter_max_jump','filter_window',
-   'detect_method','center_ema','angle_kalman_R','angle_kalman_Q'].forEach(id => {
+   'detect_method','center_ema','angle_kalman_R','angle_kalman_Q',
+   'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
+   'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id => {
     const el = q(id);
     if (el) cfg[id] = el.value;
   });
@@ -1365,7 +1391,9 @@ function stopStreamDetection() {
 async function callOneShot() {
   const form = new FormData();
   ['min_angle','max_angle','min_value','max_value','center_offset_y',
-   'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+   'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
+   'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
+   'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id =>
     form.append(id, q(id).value));
   const r = await fetch(API + '/api/one-shot', { method: 'POST', body: form });
   if (!r.ok) throw new Error(await r.text());
@@ -1473,7 +1501,9 @@ async function oneShot() {
       const form = new FormData();
       form.append('image', blob, 'frame.jpg');
       ['min_angle','max_angle','min_value','max_value','center_offset_y',
-       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
+       'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
+       'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id =>
         form.append(id, q(id).value));
       form.append('need_annotation', 'true');
       const r2 = await fetch(API + '/detect', { method: 'POST', body: form });
@@ -1492,7 +1522,9 @@ function getFormValues() {
     'min_value','max_value','min_angle','max_angle','center_offset_y','inner_ratio','outer_ratio',
     'blur_kernel','threshold_block','threshold_c','interval_seconds',
     'filter_alpha','filter_max_jump','filter_window',
-    'detect_method','use_clahe','center_ema','angle_kalman_R','angle_kalman_Q'];
+    'detect_method','use_clahe','center_ema','angle_kalman_R','angle_kalman_Q',
+    'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
+    'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'];
   const vals = {};
   fields.forEach(k => { const el = q(k); if (el) vals[k] = el.value; });
   // Checkbox fields
@@ -1540,11 +1572,6 @@ async function loadConfig() {
         camSel.value = String(c.camera_id);
       }
     }
-    // const checkboxFields = ['use_clahe'];
-    // checkboxFields.forEach(k => {
-    //   const el = q(k);
-    //   if (el && c[k] !== undefined) el.checked = !!c[k];
-    // });
     toast('[OK] Config loaded');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
@@ -1631,7 +1658,9 @@ async function manualCalibrate() {
       const form = new FormData();
       form.append('image', captureBlob, 'frame.jpg');
       ['min_angle','max_angle','min_value','max_value','center_offset_y',
-       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id =>
+       'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
+       'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
+       'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id =>
         form.append(id, q(id).value));
       form.append('need_annotation', 'true');
       const r = await fetch(API + '/detect', { method: 'POST', body: form });
