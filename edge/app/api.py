@@ -60,6 +60,13 @@ def load_config():
         "center_offset_y": 0,
         "inner_ratio": 0.60,
         "outer_ratio": 0.80,
+        "circle_hough_param1": 100,
+        "circle_hough_param2": 50,
+        "circle_hough_dp": 1.2,
+        "circle_min_circularity": 0.7,
+        "circle_min_dist_ratio": 0.3,
+        "circle_min_radius_ratio": 0.05,
+        "circle_max_radius_ratio": 0.45,
         "blur_kernel": 5,
         "threshold_block": 0,
         "threshold_c": 5,
@@ -390,6 +397,9 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
 def set_stream_detect_config(body: dict):
     allowed = {"min_value", "max_value", "min_angle", "max_angle",
                "center_offset_y", "inner_ratio", "outer_ratio",
+               "circle_hough_param1", "circle_hough_param2", "circle_hough_dp",
+               "circle_min_circularity", "circle_min_dist_ratio",
+               "circle_min_radius_ratio", "circle_max_radius_ratio",
                "blur_kernel", "threshold_block", "threshold_c",
                "filter_alpha", "filter_max_jump", "filter_window",
                "detect_method", "use_clahe", "center_ema",
@@ -462,7 +472,14 @@ def _run_detection(frame, cfg):
             prev = _center_tracker.get() if _center_tracker.initialized else None
         center_result = find_gauge_center(proc, prev_center=prev,
                                           ema_alpha=float(cfg.get("center_ema", 0.3)),
-                                          use_clahe=False)
+                                          use_clahe=False,
+                                          param1=float(cfg.get("circle_hough_param1", 100)),
+                                          param2=float(cfg.get("circle_hough_param2", 50)),
+                                          dp=float(cfg.get("circle_hough_dp", 1.2)),
+                                          min_circularity=float(cfg.get("circle_min_circularity", 0.7)),
+                                          min_dist_ratio=float(cfg.get("circle_min_dist_ratio", 0.3)),
+                                          min_radius_ratio=float(cfg.get("circle_min_radius_ratio", 0.05)),
+                                          max_radius_ratio=float(cfg.get("circle_max_radius_ratio", 0.45)))
         if center_result is None:
             return {"error": "could not find gauge center"}
         cx, cy, radius = center_result
@@ -722,6 +739,9 @@ def update_config(body: dict):
         "point", "camera_id", "cam_resolution",
         "min_value", "max_value", "min_angle", "max_angle",
         "center_offset_y", "inner_ratio", "outer_ratio",
+        "circle_hough_param1", "circle_hough_param2", "circle_hough_dp",
+        "circle_min_circularity", "circle_min_dist_ratio",
+        "circle_min_radius_ratio", "circle_max_radius_ratio",
         "blur_kernel", "threshold_block", "threshold_c",
         "interval_seconds", "server_api_url", "api_key",
         "filter_alpha", "filter_max_jump", "filter_window",
