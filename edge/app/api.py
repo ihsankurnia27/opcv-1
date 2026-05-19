@@ -480,18 +480,18 @@ def _run_detection(frame, cfg):
         center_result = find_gauge_center(proc, prev_center=prev,
                                           ema_alpha=float(cfg.get("center_ema", 0.3)),
                                           use_clahe=False,
-                                          param1=float(cfg.get("circle_hough_param1", 100)),
-                                          param2=float(cfg.get("circle_hough_param2", 50)),
-                                          dp=float(cfg.get("circle_hough_dp", 1.2)),
-                                          canny_low=int(cfg.get("circle_canny_low", 50)),
-                                          canny_high=int(cfg.get("circle_canny_high", 150)),
-                                          adaptive_thresh=bool(cfg.get("circle_adaptive_thresh", False)),
-                                          dilate_iters=int(cfg.get("circle_dilate", 0)),
-                                          clahe_clip=float(cfg.get("circle_clahe_clip", 2.0)),
-                                          min_circularity=float(cfg.get("circle_min_circularity", 0.7)),
-                                          min_dist_ratio=float(cfg.get("circle_min_dist_ratio", 0.3)),
-                                          min_radius_ratio=float(cfg.get("circle_min_radius_ratio", 0.05)),
-                                          max_radius_ratio=float(cfg.get("circle_max_radius_ratio", 0.45)))
+                                          circle_hough_param1=float(cfg.get("circle_hough_param1", 100)),
+                                          circle_hough_param2=float(cfg.get("circle_hough_param2", 50)),
+                                          circle_hough_dp=float(cfg.get("circle_hough_dp", 1.2)),
+                                          circle_canny_low=int(cfg.get("circle_canny_low", 50)),
+                                          circle_canny_high=int(cfg.get("circle_canny_high", 150)),
+                                          circle_adaptive_thresh=bool(cfg.get("circle_adaptive_thresh", False)),
+                                          circle_dilate=int(cfg.get("circle_dilate", 0)),
+                                          circle_clahe_clip=float(cfg.get("circle_clahe_clip", 2.0)),
+                                          circle_min_circularity=float(cfg.get("circle_min_circularity", 0.7)),
+                                          circle_min_dist_ratio=float(cfg.get("circle_min_dist_ratio", 0.3)),
+                                          circle_min_radius_ratio=float(cfg.get("circle_min_radius_ratio", 0.05)),
+                                          circle_max_radius_ratio=float(cfg.get("circle_max_radius_ratio", 0.45)))
         if center_result is None:
             return {"error": "could not find gauge center"}
         cx, cy, radius = center_result
