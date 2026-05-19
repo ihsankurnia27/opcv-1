@@ -854,6 +854,25 @@ input[type="password"] { letter-spacing: .2em; }
         <div class="field-group"><label>Min Radius Ratio</label><input id="circle_min_radius_ratio" type="number" step="0.05" value="0.1"></div>
         <div class="field-group"><label>Max Radius Ratio</label><input id="circle_max_radius_ratio" type="number" step="0.05" value="0.5"></div>
       </div>
+      <div class="field-row" style="margin-top:12px; opacity:0.7">
+        <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em">Robustness</div>
+      </div>
+      <div class="field-row single">
+        <div class="field-group">
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="circle_adaptive_thresh" checked style="width:auto">
+            Adaptive Threshold
+          </label>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Canny Low</label><input id="circle_canny_low" type="number" value="50"></div>
+        <div class="field-group"><label>Canny High</label><input id="circle_canny_high" type="number" value="150"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Edge Dilation</label><input id="circle_dilate" type="number" value="0"></div>
+        <div class="field-group"><label>CLAHE Clip</label><input id="circle_clahe_clip" type="number" step="0.1" value="2.0"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -1393,12 +1412,14 @@ async function startStreamDetection() {
    'filter_alpha','filter_max_jump','filter_window',
    'detect_method','center_ema','angle_kalman_R','angle_kalman_Q',
    'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
-   'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id => {
+   'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
+   'circle_canny_low','circle_canny_high','circle_dilate','circle_clahe_clip'].forEach(id => {
     const el = q(id);
     if (el) cfg[id] = el.value;
   });
-  // Checkbox
+  // Checkboxes
   cfg['use_clahe'] = q('use_clahe')?.checked ? '1' : '0';
+  cfg['circle_adaptive_thresh'] = q('circle_adaptive_thresh')?.checked ? '1' : '0';
 
   try {
     await fetch(API + '/api/stream-detect-config', {
@@ -1553,11 +1574,13 @@ function getFormValues() {
     'filter_alpha','filter_max_jump','filter_window',
     'detect_method','use_clahe','center_ema','angle_kalman_R','angle_kalman_Q',
     'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
-    'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'];
+    'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
+    'circle_adaptive_thresh', 'circle_canny_low', 'circle_canny_high', 'circle_dilate', 'circle_clahe_clip'];
   const vals = {};
   fields.forEach(k => { const el = q(k); if (el) vals[k] = el.value; });
   // Checkbox fields
   vals['use_clahe'] = q('use_clahe')?.checked ? '1' : '0';
+  vals['circle_adaptive_thresh'] = q('circle_adaptive_thresh')?.checked ? '1' : '0';
   return vals;
 }
 
