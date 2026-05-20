@@ -779,7 +779,7 @@ input[type="password"] { letter-spacing: .2em; }
       <div class="card-title">Connection</div>
       <div class="field-row">
         <div class="field-group">
-          <label>Point ID</label>
+          <label title="The unique identifier for the monitoring point from the main server.">Point ID</label>
           <div class="point-row">
             <select id="point"></select>
             <button class="btn btn-xs" onclick="fetchPoints()" title="Fetch points">Reload</button>
@@ -787,8 +787,8 @@ input[type="password"] { letter-spacing: .2em; }
         </div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Server API URL</label><input id="server_api_url" value="http://uvls-app/api/receive_reading.php"></div>
-        <div class="field-group"><label>API Key</label><input id="api_key" type="password" value="changeme"></div>
+        <div class="field-group"><label title="Endpoint where readings are sent. Defaults to the PHP app server.">Server API URL</label><input id="server_api_url" value="http://uvls-app/api/receive_reading.php"></div>
+        <div class="field-group"><label title="Used for authenticated communication with the server API.">API Key</label><input id="api_key" type="password" value="changeme"></div>
       </div>
     </div>
 
@@ -796,7 +796,7 @@ input[type="password"] { letter-spacing: .2em; }
       <div class="card-title">Camera</div>
       <div class="field-row">
         <div class="field-group">
-          <label>Device</label>
+          <label title="Select the physical USB camera device index.">Device</label>
           <select id="camera_id"></select>
         </div>
         <div class="field-group" style="display:flex;align-items:end;gap:4px">
@@ -805,7 +805,7 @@ input[type="password"] { letter-spacing: .2em; }
       </div>
       <div class="field-row single">
         <div class="field-group">
-          <label>Resolution</label>
+          <label title="Capture resolution. Auto uses the camera's default or highest stable resolution.">Resolution</label>
           <div style="display:flex;gap:6px">
             <select id="cam_resolution" style="flex:1">
               <option value="0x0">Auto (native)</option>
@@ -826,65 +826,65 @@ input[type="password"] { letter-spacing: .2em; }
     <div class="card">
       <div class="card-title">Calibration</div>
       <div class="field-row">
-        <div class="field-group"><label>Min Value</label><input id="min_value" type="number" step="any" value="0"></div>
-        <div class="field-group"><label>Max Value</label><input id="max_value" type="number" step="any" value="10"></div>
+        <div class="field-group"><label title="Numerical value at the minimum angle position.">Min Value</label><input id="min_value" type="number" step="any" value="0"></div>
+        <div class="field-group"><label title="Numerical value at the maximum angle position.">Max Value</label><input id="max_value" type="number" step="any" value="10"></div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Min Angle</label><input id="min_angle" type="number" min="0" max="360" value="45"></div>
-        <div class="field-group"><label>Max Angle</label><input id="max_angle" type="number" min="0" max="360" value="315"></div>
+        <div class="field-group"><label title="Starting angle of the gauge scale in degrees (0 = right, 90 = down).">Min Angle</label><input id="min_angle" type="number" min="0" max="360" value="45"></div>
+        <div class="field-group"><label title="Ending angle of the gauge scale in degrees.">Max Angle</label><input id="max_angle" type="number" min="0" max="360" value="315"></div>
       </div>
       <div class="field-row">
-        <button class="btn btn-sm" id="btn-auto-cal" onclick="autoCalibrate()">Auto-Cal</button>
-        <button class="btn btn-sm" id="btn-manual-cal" onclick="manualCalibrate()">Manual Cal</button>
+        <button class="btn btn-sm" id="btn-auto-cal" onclick="autoCalibrate()" title="Automatically detect scale range from image variance">Auto-Cal</button>
+        <button class="btn btn-sm" id="btn-manual-cal" onclick="manualCalibrate()" title="Manually mark scale center and range by clicking on image">Manual Cal</button>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Circle Tuning</div>
       <div class="field-row">
-        <div class="field-group"><label>Hough Param 1</label><input id="circle_hough_param1" type="number" step="1" value="100"></div>
-        <div class="field-group"><label>Hough Param 2</label><input id="circle_hough_param2" type="number" step="1" value="30"></div>
+        <div class="field-group"><label title="Canny threshold for Hough gradient. Higher = fewer edges.">Hough Param 1</label><input id="circle_hough_param1" type="number" step="1" value="100"></div>
+        <div class="field-group"><label title="Accumulator threshold for circle centers. Lower = more (false) circles.">Hough Param 2</label><input id="circle_hough_param2" type="number" step="1" value="30"></div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Hough DP</label><input id="circle_hough_dp" type="number" step="0.1" value="1.0"></div>
-        <div class="field-group"><label>Min Circularity</label><input id="circle_min_circularity" type="number" step="0.01" value="0.8"></div>
+        <div class="field-group"><label title="Inverse ratio of accumulator resolution to image resolution. 1.0 is default.">Hough DP</label><input id="circle_hough_dp" type="number" step="0.1" value="1.0"></div>
+        <div class="field-group"><label title="Minimum circularity (4*pi*Area/Perimeter^2) for contour strategy.">Min Circularity</label><input id="circle_min_circularity" type="number" step="0.01" value="0.8"></div>
       </div>
       <div class="field-row three">
-        <div class="field-group"><label>Min Dist Ratio</label><input id="circle_min_dist_ratio" type="number" step="0.05" value="0.5"></div>
-        <div class="field-group"><label>Min Radius Ratio</label><input id="circle_min_radius_ratio" type="number" step="0.05" value="0.1"></div>
-        <div class="field-group"><label>Max Radius Ratio</label><input id="circle_max_radius_ratio" type="number" step="0.05" value="0.5"></div>
+        <div class="field-group"><label title="Minimum distance between centers of detected circles as fraction of image height.">Min Dist Ratio</label><input id="circle_min_dist_ratio" type="number" step="0.05" value="0.5"></div>
+        <div class="field-group"><label title="Minimum expected gauge radius as fraction of image width.">Min Radius Ratio</label><input id="circle_min_radius_ratio" type="number" step="0.05" value="0.1"></div>
+        <div class="field-group"><label title="Maximum expected gauge radius as fraction of image width.">Max Radius Ratio</label><input id="circle_max_radius_ratio" type="number" step="0.05" value="0.5"></div>
       </div>
       <div class="field-row" style="margin-top:12px; opacity:0.7">
         <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em">Robustness</div>
       </div>
       <div class="field-row single">
         <div class="field-group">
-          <label style="display:flex;align-items:center;gap:8px">
+          <label style="display:flex;align-items:center;gap:8px" title="Use adaptive thresholding for contour detection instead of fixed Canny.">
             <input type="checkbox" id="circle_adaptive_thresh" checked style="width:auto">
             Adaptive Threshold
           </label>
         </div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Canny Low</label><input id="circle_canny_low" type="number" value="50"></div>
-        <div class="field-group"><label>Canny High</label><input id="circle_canny_high" type="number" value="150"></div>
+        <div class="field-group"><label title="Low threshold for Canny edge detector (Circle detection).">Canny Low</label><input id="circle_canny_low" type="number" value="50"></div>
+        <div class="field-group"><label title="High threshold for Canny edge detector (Circle detection).">Canny High</label><input id="circle_canny_high" type="number" value="150"></div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Edge Dilation</label><input id="circle_dilate" type="number" value="0"></div>
-        <div class="field-group"><label>CLAHE Clip</label><input id="circle_clahe_clip" type="number" step="0.1" value="2.0"></div>
+        <div class="field-group"><label title="Dilation iterations to thicken edges before contour detection.">Edge Dilation</label><input id="circle_dilate" type="number" value="0"></div>
+        <div class="field-group"><label title="Clip limit for CLAHE preprocessing in circle detection.">CLAHE Clip</label><input id="circle_clahe_clip" type="number" step="0.1" value="2.0"></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Detection</div>
       <div class="field-row three">
-        <div class="field-group"><label>Y Offset</label><input id="center_offset_y" type="number" value="0"><div class="help">px, + = down</div></div>
-        <div class="field-group"><label>Inner Ratio</label><input id="inner_ratio" type="number" step="0.05" min="0.1" max="0.9" value="0.60"></div>
-        <div class="field-group"><label>Outer Ratio</label><input id="outer_ratio" type="number" step="0.05" min="0.2" max="1" value="0.80"></div>
+        <div class="field-group"><label title="Vertical adjustment of the detected gauge center in pixels.">Y Offset</label><input id="center_offset_y" type="number" value="0"><div class="help">px, + = down</div></div>
+        <div class="field-group"><label title="Inner radius of needle search area as fraction of gauge radius.">Inner Ratio</label><input id="inner_ratio" type="number" step="0.05" min="0.1" max="0.9" value="0.60"></div>
+        <div class="field-group"><label title="Outer radius of needle search area as fraction of gauge radius.">Outer Ratio</label><input id="outer_ratio" type="number" step="0.05" min="0.2" max="1" value="0.80"></div>
       </div>
       <div class="field-row single">
         <div class="field-group">
-          <label>Method</label>
+          <label title="Needle detection algorithm. Auto combines multiple strategies.">Method</label>
           <select id="detect_method">
             <option value="auto">Auto (multi-strategy vote)</option>
             <option value="line">Line (Hough)</option>
@@ -895,41 +895,41 @@ input[type="password"] { letter-spacing: .2em; }
       </div>
       <div class="field-row single">
         <div class="field-group">
-          <label style="display:flex;align-items:center;gap:8px">
+          <label style="display:flex;align-items:center;gap:8px" title="Enhance image contrast locally to handle varying lighting.">
             <input type="checkbox" id="use_clahe" checked style="width:auto">
             CLAHE lighting normalization
           </label>
         </div>
       </div>
       <div class="field-row three">
-        <div class="field-group"><label>Blur Kernel</label><input id="blur_kernel" type="number" step="2" min="1" max="31" value="5"></div>
-        <div class="field-group"><label>Threshold Block</label><input id="threshold_block" type="number" step="2" min="0" max="99" value="0"></div>
-        <div class="field-group"><label>Threshold C</label><input id="threshold_c" type="number" min="0" max="20" value="5"></div>
+        <div class="field-group"><label title="Kernel size for Gaussian blur before needle thresholding (must be odd).">Blur Kernel</label><input id="blur_kernel" type="number" step="2" min="1" max="31" value="5"></div>
+        <div class="field-group"><label title="Block size for adaptive thresholding in needle detection.">Threshold Block</label><input id="threshold_block" type="number" step="2" min="0" max="99" value="0"></div>
+        <div class="field-group"><label title="Constant subtracted from mean in adaptive thresholding.">Threshold C</label><input id="threshold_c" type="number" min="0" max="20" value="5"></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Smoothing v2</div>
       <div class="field-row three">
-        <div class="field-group"><label>Center EMA</label><input id="center_ema" type="number" step="0.05" min="0.05" max="0.95" value="0.30"></div>
-        <div class="field-group"><label>Kalman R</label><input id="angle_kalman_R" type="number" step="0.01" min="0.01" max="5" value="0.10"><div class="help">measurement noise</div></div>
-        <div class="field-group"><label>Kalman Q</label><input id="angle_kalman_Q" type="number" step="0.001" min="0.001" max="1" value="0.01"><div class="help">process noise</div></div>
+        <div class="field-group"><label title="EMA alpha for gauge center tracking. Lower = smoother/laggy centers.">Center EMA</label><input id="center_ema" type="number" step="0.05" min="0.05" max="0.95" value="0.30"></div>
+        <div class="field-group"><label title="Measurement noise covariance for Angle Kalman Filter. Higher = trust measurement less.">Kalman R</label><input id="angle_kalman_R" type="number" step="0.01" min="0.01" max="5" value="0.10"><div class="help">measurement noise</div></div>
+        <div class="field-group"><label title="Process noise covariance for Angle Kalman Filter. Lower = assume slower needle.">Kalman Q</label><input id="angle_kalman_Q" type="number" step="0.001" min="0.001" max="1" value="0.01"><div class="help">process noise</div></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Smoothing</div>
       <div class="field-row three">
-        <div class="field-group"><label>EMA Alpha</label><input id="filter_alpha" type="number" step="0.05" min="0.05" max="0.95" value="0.15"><div class="help">higher = less smoothing</div></div>
-        <div class="field-group"><label>Max Jump</label><input id="filter_max_jump" type="number" step="0.5" min="0.5" max="10" value="1.5"><div class="help">spike rejection threshold</div></div>
-        <div class="field-group"><label>Window</label><input id="filter_window" type="number" min="1" max="21" value="5"><div class="help">median window size</div></div>
+        <div class="field-group"><label title="EMA alpha for value smoothing. Lower = more smoothing/lag.">EMA Alpha</label><input id="filter_alpha" type="number" step="0.05" min="0.05" max="0.95" value="0.15"><div class="help">higher = less smoothing</div></div>
+        <div class="field-group"><label title="Maximum change in value allowed between frames before it is treated as a spike.">Max Jump</label><input id="filter_max_jump" type="number" step="0.5" min="0.5" max="10" value="1.5"><div class="help">spike rejection threshold</div></div>
+        <div class="field-group"><label title="Size of the window for median filtering to eliminate outlier noise.">Window</label><input id="filter_window" type="number" min="1" max="21" value="5"><div class="help">median window size</div></div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Schedule</div>
       <div class="field-row single">
-        <div class="field-group"><label>Interval (seconds)</label><input id="interval_seconds" type="number" min="60" value="3600"><div class="help">3600s = 1 hour</div></div>
+        <div class="field-group"><label title="Time between automated readings and server submissions.">Interval (seconds)</label><input id="interval_seconds" type="number" min="60" value="3600"><div class="help">3600s = 1 hour</div></div>
       </div>
     </div>
 
