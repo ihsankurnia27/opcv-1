@@ -309,6 +309,40 @@
 - Depends on: Task 1 (GaugeDetector class) — DONE ✓
 - Blocks: Tasks 14, 15
 
+## Task 12: Export/import presets as JSON
+
+### What changed
+- **Backend** (`app/api.py`): Added `POST /api/presets/import` endpoint at line 818:
+  - Accepts `{version: 1, presets: [{name, params}]}` JSON body
+  - Unknown version → 400 `{detail: "Unknown version: X"}`
+  - Empty presets array → 400 `{detail: "presets must be a non-empty array"}`
+  - Preset missing `name` or `params` → 400 `{detail: "Each preset must have name and params"}`
+  - Import with same name as existing → overwrite silently (replace id, params, created)
+  - Returns `{imported: N, skipped: M}` (skipped for empty-name presets)
+
+- **Frontend** (index.html):
+  - **Export button**: `.btn-tonal` in Presets card button row → `exportPresets()` fetches GET /api/presets, builds `{version, exported_at, presets}`, triggers browser download as `edge-presets-{date}.json`
+  - **Import button**: `.btn-outlined` → triggers hidden `<input type="file" accept=".json">` → `importPresets()` reads file via FileReader, validates format client-side (version=1, non-empty array, each has name+params), POSTs to /api/presets/import, reloads list on success
+  - **CSS**: Added `.btn-outlined` with transparent bg + md-primary border + hover tint
+  - Event listener wired: `q('presetImportInput').addEventListener('change', ...)`
+
+### Key design decisions
+- Export is purely client-side (GET presets → Blob → download) — no server-side file write
+- File input value cleared after change (`e.target.value = ''`) so same file can be re-imported
+- Client-side validation mirrors server-side for immediate feedback
+- Import creates new IDs for all presets (even overwriting duplicates) — same pattern as existing create_preset
+
+### Test coverage (5 tests, all passing)
+- `test_import_valid`: POST valid payload, verify imported=2, written to config
+- `test_import_unknown_version`: version=999 → 400
+- `test_import_invalid_format`: missing params → 400
+- `test_import_duplicate_names`: overwrites existing, still 1 entry, params updated
+- `test_import_empty_presets`: empty array → 400
+
+### Dependencies
+- Depends on: Task 5 (preset API), Task 8 (preset UI) — DONE ✓
+- Blocks: Tasks 14, 15
+
 ## Task 10: Per-card Reset button to restore last-saved config
 
 ### What changed

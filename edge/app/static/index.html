@@ -205,6 +205,14 @@ body {
   border-color: transparent;
 }
 
+.btn-outlined {
+  background: transparent;
+  color: var(--md-primary);
+  border-color: var(--md-primary);
+}
+
+.btn-outlined:hover { background: rgba(20, 184, 166, 0.08); }
+
 .btn-sm {
   height: 32px;
   padding: 0 16px;
@@ -1216,6 +1224,9 @@ input[type="range"]:focus::-moz-range-thumb {
         <button class="btn btn-sm btn-tonal" onclick="savePreset()">Save Current</button>
         <button class="btn btn-sm" id="btn-delete-preset" onclick="deletePreset()" disabled>Delete</button>
         <button class="btn btn-sm" onclick="loadPresets()">Refresh</button>
+        <button class="btn btn-sm btn-tonal" onclick="exportPresets()">Export</button>
+        <button class="btn btn-sm btn-outlined" onclick="document.getElementById('presetImportInput').click()">Import</button>
+        <input type="file" id="presetImportInput" accept=".json" style="display:none">
       </div>
     </div>
 
@@ -2596,11 +2607,49 @@ async function deletePreset() {
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
 
+async function exportPresets() {
+  try {
+    const presets = await api('GET', '/api/presets');
+    const payload = {
+      version: 1,
+      exported_at: new Date().toISOString(),
+      presets: presets || [],
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'edge-presets-' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('[OK] Exported ' + (presets || []).length + ' presets');
+  } catch(e) { toast('[FAIL] Export presets: ' + e.message, 'error'); }
+}
+
+async function importPresets(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    let data;
+    try { data = JSON.parse(text); } catch(e) { toast('[FAIL] Invalid JSON file', 'error'); return; }
+    if (data.version !== 1) { toast('[FAIL] Unknown version: ' + data.version, 'error'); return; }
+    if (!Array.isArray(data.presets) || data.presets.length === 0) { toast('[FAIL] presets must be a non-empty array', 'error'); return; }
+    for (let i = 0; i < data.presets.length; i++) {
+      const p = data.presets[i];
+      if (!p.name || !p.params) { toast('[FAIL] Preset at index ' + i + ' missing name or params', 'error'); return; }
+    }
+    const result = await api('POST', '/api/presets/import', data);
+    await loadPresets();
+    toast('[OK] Imported ' + result.imported + ' presets (' + result.skipped + ' skipped)');
+  } catch(e) { toast('[FAIL] Import presets: ' + e.message, 'error'); }
+}
+
 // === Init ===
 window.addEventListener('resize', () => { if (streamActive) updateCanvasSize(); });
 
 q('point').addEventListener('change', fillPointValues);
 q('presetSelect').addEventListener('change', onPresetSelect);
+q('presetImportInput').addEventListener('change', function(e) { importPresets(e.target.files[0]); e.target.value = ''; });
 q('feed-canvas').addEventListener('click', onCalCanvasClick);
 
 (async function init() {

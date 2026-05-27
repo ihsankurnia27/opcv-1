@@ -815,6 +815,46 @@ def apply_preset(pid: str):
     return {"ok": True}
 
 
+@app.post("/api/presets/import")
+def import_presets(body: dict):
+    if body.get("version") != 1:
+        raise HTTPException(400, f"Unknown version: {body.get('version')}")
+    presets_in = body.get("presets")
+    if not isinstance(presets_in, list) or len(presets_in) == 0:
+        raise HTTPException(400, "presets must be a non-empty array")
+    for p in presets_in:
+        if not isinstance(p, dict) or "name" not in p or "params" not in p:
+            raise HTTPException(400, "Each preset must have name and params")
+    cfg = load_config()
+    existing = cfg.setdefault("presets", [])
+    imported = 0
+    skipped = 0
+    for p in presets_in:
+        name = p.get("name", "").strip()
+        if not name:
+            skipped += 1
+            continue
+        found = False
+        for ep in existing:
+            if ep.get("name") == name:
+                ep["params"] = p.get("params", {})
+                ep["id"] = uuid.uuid4().hex[:12]
+                ep["created"] = datetime.now().isoformat()
+                found = True
+                imported += 1
+                break
+        if not found:
+            existing.append({
+                "id": uuid.uuid4().hex[:12],
+                "name": name,
+                "params": p.get("params", {}),
+                "created": datetime.now().isoformat(),
+            })
+            imported += 1
+    save_config(cfg)
+    return {"imported": imported, "skipped": skipped}
+
+
 @app.get("/api/points")
 def proxy_points():
     cfg = load_config()

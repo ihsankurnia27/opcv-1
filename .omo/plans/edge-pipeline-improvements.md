@@ -799,7 +799,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-9-checkbox.png
   ```
 
-- [ ] 10. Parameter reset per section
+- [x] 10. Parameter reset per section
 
   **What to do**:
   - Add a small "Reset" button (btn-xs, outlined) to the top-right of each config card
