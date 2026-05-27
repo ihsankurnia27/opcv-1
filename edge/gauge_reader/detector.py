@@ -264,6 +264,9 @@ class GaugeDetector:
 
         # ── Needle detection ────────────────────────────────
         debug_binary = None
+        line_confidence_val = 0.0
+        radial_confidence_val = 0.0
+        strategy_consensus_val = 0.0
         if method == "radial":
             angle_deg = find_needle_angle_legacy(
                 proc, cx, cy_adjusted, radius,
@@ -273,6 +276,9 @@ class GaugeDetector:
                 threshold_block=int(cfg["threshold_block"]),
                 threshold_c=int(cfg["threshold_c"]),
             )
+            # Single strategy — moderate default confidence
+            radial_confidence_val = 0.5
+            strategy_consensus_val = 0.5
         else:
             angle_result = find_needle_angle(
                 proc, cx, cy_adjusted, radius,
@@ -289,6 +295,10 @@ class GaugeDetector:
             if "error" in angle_result:
                 return angle_result
             angle_deg = float(angle_result["angle"])
+            # Extract per-strategy confidences from angle_result
+            radial_confidence_val = angle_result.get("radial_confidence") or 0.0
+            line_confidence_val = angle_result.get("line_confidence") or 0.0
+            strategy_consensus_val = angle_result.get("strategy_consensus", 0.0)
 
         # ── Temporal angle filter ───────────────────────────
         if method != "radial":
@@ -345,9 +355,19 @@ class GaugeDetector:
         min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
         value = angle_to_value(angle_deg, min_a, max_a, min_v, max_v)
 
+        # ── Confidence computation ──────────────────────────
+        combined = (radial_confidence_val + line_confidence_val
+                    + strategy_consensus_val) / 3.0
+
+        # ── Rejection logic ─────────────────────────────────
+        min_conf = float(cfg.get("min_confidence", 0.0))
+        rejected = bool(min_conf > 0 and combined < min_conf)
+
         return {
             "value": round(value, 2),
             "angle": round(angle_deg, 2),
+            "confidence": round(combined, 3),
+            "rejected": rejected,
             "center": {"x": cx_out, "y": cy_out, "radius": radius_out},
             "error": None,
             "w": w_orig, "h": h_orig,

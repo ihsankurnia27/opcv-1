@@ -267,3 +267,44 @@
 ### Dependencies
 - Depends on: Task 1 (GaugeDetector class) — DONE ✓
 - Blocks: Tasks 14, 15
+
+## Task 6: Confidence-based rejection in detection output
+
+### What changed
+- **`gauge_reader/find_needle.py`**: Added per-strategy confidence tracking (`line_confidence`, `diff_confidence`, `radial_confidence`) in `find_needle_angle()`. Added `strategy_consensus` computation (1.0 if ≥2 strategies agree within 5°, 0.5 if multiple disagree, 0.0 if only one). Extended return dict with `line_confidence`, `diff_confidence`, `radial_confidence`, `strategy_consensus`.
+
+- **`gauge_reader/detector.py`**: In `_run_detection()`:
+  - Extracts per-strategy confidences from `find_needle_angle()` result (non-radial path)
+  - For radial-only (legacy) path: uses moderate defaults (radial=0.5, consensus=0.5)
+  - Computes combined confidence: `(radial + line + consensus) / 3.0`, clamped to [0, 1]
+  - Adds `"confidence": float` (rounded to 3 decimals) to result dict
+  - Adds `"rejected": bool` to result dict based on `min_confidence` config
+  - When rejected: value/angle/center still included, just flagged
+
+- **`app/api.py`**: Added `min_confidence: float = 0.0` to `load_config()` defaults, `ALLOWED_DETECT_KEYS`, and `update_config()` allowed set.
+
+- **`app/static/index.html`**: Added Confidence row to HUD. Color-coded: green (≥0.5), amber (<0.5), red + "REJECTED" when rejected. Status text changes to "Detected", "Low conf", or "Rejected" accordingly.
+
+### Key design decisions
+- `find_needle_angle()` return dict extended (not changed) — existing callers unaffected
+- Combined confidence formula: equal weight (1/3 each) to radial trough sharpness, line confidence, and strategy consensus
+- `min_confidence=0.0` means never reject (backward compat)
+- `0.0 or 0.0` → `0.0` is correct (the `or 0.0` pattern handles None → 0.0 for unused strategies)
+- Radial-only legacy path gets moderate defaults (0.5) since the legacy function doesn't return confidence
+
+### Test coverage (11 tests, all passing)
+- `test_confidence_in_result`: result has "confidence" key
+- `test_confidence_is_float`: confidence type check
+- `test_confidence_in_range`: confidence ∈ [0, 1]
+- `test_rejected_when_below_min_confidence`: min_confidence=0.99 → rejected=true
+- `test_not_rejected_when_min_confidence_zero`: min_confidence=0.0 → never reject
+- `test_not_rejected_when_above`: confidence ≥ min_confidence → rejected=false
+- `test_rejected_has_value`: rejected result still includes value
+- `test_min_confidence_default_in_load_config`: load_config() has min_confidence=0.0
+- `test_min_confidence_in_allowed_detect_keys`: in ALLOWED_DETECT_KEYS
+- `test_confidence_consistent`: same frame → same confidence
+- `test_min_confidence_accepted_by_set_stream_detect_config`: min_confidence in ALLOWED_DETECT_KEYS
+
+### Dependencies
+- Depends on: Task 1 (GaugeDetector class) — DONE ✓
+- Blocks: Tasks 14, 15

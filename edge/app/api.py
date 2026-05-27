@@ -103,6 +103,7 @@ def load_config():
     defaults.setdefault("presets", [])
     defaults.setdefault("use_roi", False)
     defaults.setdefault("roi_margin", 1.5)
+    defaults.setdefault("min_confidence", 0.0)
     return defaults
 
 
@@ -138,6 +139,7 @@ ALLOWED_DETECT_KEYS = {
     "detect_method", "use_clahe", "center_ema",
     "angle_kalman_R", "angle_kalman_Q", "angle_kalman_dt",
     "use_roi", "roi_margin",
+    "min_confidence",
 }
 
 _detect_config = {}
@@ -708,6 +710,7 @@ def update_config(body: dict):
         "cam_brightness", "cam_contrast", "cam_gain",
         "cam_auto_exposure", "cam_exposure_absolute",
         "use_roi", "roi_margin",
+        "min_confidence",
     }
     for k, v in body.items():
         if k in allowed:

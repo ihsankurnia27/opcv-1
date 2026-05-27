@@ -1338,6 +1338,7 @@ input[type="range"]:focus::-moz-range-thumb {
           <div class="hud-row"><span class="hud-label">Value</span><span class="hud-value accent" id="hud-value">--</span></div>
           <div class="hud-row"><span class="hud-label">Angle</span><span class="hud-value" id="hud-angle">--</span></div>
           <div class="hud-row"><span class="hud-label">Center</span><span class="hud-value" id="hud-center">--</span></div>
+          <div class="hud-row"><span class="hud-label">Confidence</span><span class="hud-value" id="hud-confidence">--</span></div>
           <hr class="hud-divider">
           <div class="hud-row"><span class="hud-label">Status</span><span class="hud-value" id="hud-status" style="color:#16a34a">Idle</span></div>
         </div>
@@ -1647,6 +1648,8 @@ function resetHUD() {
   q('hud-value').textContent = '--';
   q('hud-angle').textContent = '--';
   q('hud-center').textContent = '--';
+  q('hud-confidence').textContent = '--';
+  q('hud-confidence').style.color = '';
   q('hud-status').textContent = 'Idle';
   q('hud-value').className = 'hud-value accent';
 }
@@ -1776,8 +1779,27 @@ function updateOverlayHUD(d) {
   q('hud-value').className = 'hud-value accent';
   q('hud-angle').textContent = d.angle !== undefined ? d.angle + ' deg' : '--';
   q('hud-center').textContent = d.center ? d.center.x + ',' + d.center.y : '--';
-  q('hud-status').textContent = 'Overlay';
-  q('hud-status').style.color = '#16a34a';
+  if (d.confidence !== undefined) {
+    const confEl = q('hud-confidence');
+    confEl.textContent = d.confidence;
+    if (d.rejected) {
+      confEl.textContent = d.confidence + ' REJECTED';
+      confEl.style.color = '#dc2626';
+      q('hud-status').textContent = 'Rejected';
+      q('hud-status').style.color = '#dc2626';
+    } else if (d.confidence < 0.5) {
+      confEl.style.color = '#d97706';
+      q('hud-status').textContent = 'Low conf';
+      q('hud-status').style.color = '#d97706';
+    } else {
+      confEl.style.color = '#16a34a';
+      q('hud-status').textContent = 'Overlay';
+      q('hud-status').style.color = '#16a34a';
+    }
+  } else {
+    q('hud-status').textContent = 'Overlay';
+    q('hud-status').style.color = '#16a34a';
+  }
 }
 
 // === Detect toggle ===
@@ -1864,8 +1886,28 @@ async function pollStreamStatus() {
         q('hud-value').className = 'hud-value accent';
         q('hud-angle').textContent = d.angle + ' deg';
         q('hud-center').textContent = (d.center||{}).x !== undefined ? d.center.x + ',' + d.center.y : '--';
-        q('hud-status').textContent = 'Detected';
-        q('hud-status').style.color = '#16a34a';
+        // Confidence display
+        if (d.confidence !== undefined) {
+          const confEl = q('hud-confidence');
+          confEl.textContent = d.confidence;
+          if (d.rejected) {
+            confEl.textContent = d.confidence + ' REJECTED';
+            confEl.style.color = '#dc2626';
+            q('hud-status').textContent = 'Rejected';
+            q('hud-status').style.color = '#dc2626';
+          } else if (d.confidence < 0.5) {
+            confEl.style.color = '#d97706';
+            q('hud-status').textContent = 'Low conf';
+            q('hud-status').style.color = '#d97706';
+          } else {
+            confEl.style.color = '#16a34a';
+            q('hud-status').textContent = 'Detected';
+            q('hud-status').style.color = '#16a34a';
+          }
+        } else {
+          q('hud-status').textContent = 'Detected';
+          q('hud-status').style.color = '#16a34a';
+        }
       }
     }
   } catch(e) { /* ignore */ }

@@ -221,11 +221,17 @@ def find_needle_angle(image, cx, cy, radius, inner_ratio=0.60, outer_ratio=0.80,
     # candidates: list of (angle, confidence, method_name)
     candidates = []
 
+    # Per-strategy confidence tracking
+    line_confidence = None
+    diff_confidence = None
+    radial_confidence = None
+
     # Strategy A: Line detection
     if method in ("auto", "line"):
         result = _needle_line_angle(gray, cx, cy, radius, inner_ratio, outer_ratio,
                                     min_angle, max_angle)
         if result is not None:
+            line_confidence = result[1]
             candidates.append((result[0], result[1], "line"))
 
     # Strategy B: Background difference
@@ -241,12 +247,14 @@ def find_needle_angle(image, cx, cy, radius, inner_ratio=0.60, outer_ratio=0.80,
             principal = eigenvectors[:, np.argmax(eigenvalues)]
             angle = np.rad2deg(np.arctan2(principal[1], principal[0])) % 360
             conf = min(1.0, len(xs) / 500.0)
+            diff_confidence = conf
             candidates.append((float(angle), conf, "diff"))
 
     # Strategy C: Radial (darkest ray) — always available
     if method in ("auto", "radial"):
         result = _needle_radial_angle(gray, cx, cy, radius, inner_ratio, outer_ratio)
         if result is not None:
+            radial_confidence = result[1]
             candidates.append((result[0], result[1], "radial"))
 
     if not candidates:
@@ -268,4 +276,27 @@ def find_needle_angle(image, cx, cy, radius, inner_ratio=0.60, outer_ratio=0.80,
             best_dist = d
             winning_method = m
 
-    return {"angle": round(angle, 2), "confidence": round(confidence, 2), "method": str(winning_method)}
+    # Strategy consensus: how many strategies agree within 5 deg
+    if len(candidates) >= 2:
+        angles_only = [a for a, _, _ in candidates]
+        agree_pairs = 0
+        for i in range(len(angles_only)):
+            for j in range(i + 1, len(angles_only)):
+                if _angle_diff(angles_only[i], angles_only[j]) <= 5:
+                    agree_pairs += 1
+        if agree_pairs >= 1:
+            strategy_consensus = 1.0
+        else:
+            strategy_consensus = 0.5
+    else:
+        strategy_consensus = 0.0
+
+    return {
+        "angle": round(angle, 2),
+        "confidence": round(confidence, 2),
+        "method": str(winning_method),
+        "line_confidence": line_confidence,
+        "diff_confidence": diff_confidence,
+        "radial_confidence": radial_confidence,
+        "strategy_consensus": strategy_consensus,
+    }
