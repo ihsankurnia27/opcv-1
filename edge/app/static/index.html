@@ -1169,6 +1169,23 @@ input[type="range"]:focus::-moz-range-thumb {
           <input id="threshold_c" type="number" style="display:none" min="0" max="20" value="5">
         </div>
       </div>
+      <div class="field-row single">
+        <div class="field-group">
+          <label style="display:flex;align-items:center;gap:8px" title="Crop frame to gauge region before needle detection. Reduces noise from background.">
+            <input type="checkbox" id="use_roi" style="width:auto">
+            Use ROI cropping
+          </label>
+        </div>
+      </div>
+      <div class="field-row three">
+        <div class="field-group"><label title="Multiplier of gauge radius for ROI crop box. 1.5 = crop extends 1.5× radius from center.">ROI Margin</label>
+          <div class="slider-container">
+            <input type="range" id="roi_margin_slider" min="1.0" max="3.0" step="0.1" value="1.5" oninput="onSliderInput(this,'roi_margin')">
+            <span id="roi_margin_val" class="slider-value">1.5</span>
+          </div>
+          <input id="roi_margin" type="number" style="display:none" step="0.1" min="1.0" max="3.0" value="1.5">
+        </div>
+      </div>
     </div>
 
     <!-- PRESETS -->
@@ -1430,6 +1447,7 @@ const SLIDER_RANGES = {
     filter_max_jump: { min: 0.1, max: 10.0, step: 0.5 },
     filter_window: { min: 1, max: 21, step: 2 },
     center_ema: { min: 0.05, max: 0.95, step: 0.05 },
+    roi_margin: { min: 1.0, max: 3.0, step: 0.1 },
     angle_kalman_R: { min: 0.01, max: 5.0, step: 0.05 },
     angle_kalman_Q: { min: 0.001, max: 1.0, step: 0.005 },
     interval_seconds: { min: 30, max: 86400, step: 30 },
@@ -1671,13 +1689,14 @@ async function pollOverlay() {
     form.append('image', blob, 'frame.jpg');
     ['min_angle','max_angle','min_value','max_value','center_offset_y',
      'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
-     'clahe_clip','clahe_tile'].forEach(id => {
-      const el = q(id);
-      if (el) form.append(id, el.value);
-    });
-    form.append('detect_method', q('detect_method')?.value || 'auto');
-    form.append('use_clahe', q('use_clahe')?.checked ? 'true' : 'false');
-    form.append('need_annotation', 'false');
+     'clahe_clip','clahe_tile','roi_margin'].forEach(id => {
+       const el = q(id);
+       if (el) form.append(id, el.value);
+     });
+     form.append('detect_method', q('detect_method')?.value || 'auto');
+     form.append('use_clahe', q('use_clahe')?.checked ? 'true' : 'false');
+     form.append('use_roi', q('use_roi')?.checked ? 'true' : 'false');
+     form.append('need_annotation', 'false');
     const r = await fetch(API + '/detect', { method: 'POST', body: form });
     if (r.ok) {
       const d = await r.json();
@@ -1787,7 +1806,7 @@ async function startStreamDetection() {
    'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
    'filter_alpha','filter_max_jump','filter_window',
    'detect_method','center_ema','angle_kalman_R','angle_kalman_Q',
-   'clahe_clip','clahe_tile',
+   'clahe_clip','clahe_tile','roi_margin',
    'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
    'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
    'circle_canny_low','circle_canny_high','circle_dilate','circle_clahe_clip'].forEach(id => {
@@ -1797,6 +1816,7 @@ async function startStreamDetection() {
   // Checkboxes
   cfg['use_clahe'] = q('use_clahe')?.checked ? '1' : '0';
   cfg['circle_adaptive_thresh'] = q('circle_adaptive_thresh')?.checked ? '1' : '0';
+  cfg['use_roi'] = q('use_roi')?.checked ? '1' : '0';
 
   try {
     await fetch(API + '/api/stream-detect-config', {
@@ -1819,10 +1839,11 @@ async function callOneShot() {
   const form = new FormData();
   ['min_angle','max_angle','min_value','max_value','center_offset_y',
    'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
-   'clahe_clip','clahe_tile',
+   'clahe_clip','clahe_tile','roi_margin',
    'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
    'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id =>
     form.append(id, q(id).value));
+  form.append('use_roi', q('use_roi')?.checked ? 'true' : 'false');
   const r = await fetch(API + '/api/one-shot', { method: 'POST', body: form });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
@@ -1931,8 +1952,10 @@ async function oneShot() {
       ['min_angle','max_angle','min_value','max_value','center_offset_y',
        'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
        'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
-       'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id =>
+       'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
+       'roi_margin'].forEach(id =>
         form.append(id, q(id).value));
+      form.append('use_roi', q('use_roi')?.checked ? 'true' : 'false');
       form.append('need_annotation', 'true');
       const r2 = await fetch(API + '/detect', { method: 'POST', body: form });
       if (!r2.ok) throw new Error(await r2.text());
@@ -1951,7 +1974,7 @@ function getFormValues() {
     'blur_kernel','threshold_block','threshold_c','interval_seconds',
     'filter_alpha','filter_max_jump','filter_window',
     'detect_method','use_clahe','center_ema','angle_kalman_R','angle_kalman_Q',
-    'clahe_clip','clahe_tile',
+    'clahe_clip','clahe_tile','roi_margin',
     'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
     'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
     'circle_adaptive_thresh', 'circle_canny_low', 'circle_canny_high', 'circle_dilate', 'circle_clahe_clip',
@@ -1962,6 +1985,7 @@ function getFormValues() {
   vals['use_clahe'] = q('use_clahe')?.checked ? '1' : '0';
   vals['circle_adaptive_thresh'] = q('circle_adaptive_thresh')?.checked ? '1' : '0';
   vals['cam_auto_exposure'] = q('cam_auto_exposure')?.checked ? true : false;
+  vals['use_roi'] = q('use_roi')?.checked ? '1' : '0';
   return vals;
 }
 
@@ -2097,8 +2121,10 @@ async function manualCalibrate() {
       ['min_angle','max_angle','min_value','max_value','center_offset_y',
        'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
        'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
-       'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id =>
+       'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
+       'roi_margin'].forEach(id =>
         form.append(id, q(id).value));
+      form.append('use_roi', q('use_roi')?.checked ? 'true' : 'false');
       form.append('need_annotation', 'true');
       const r = await fetch(API + '/detect', { method: 'POST', body: form });
       if (!r.ok) throw new Error(await r.text());

@@ -229,5 +229,41 @@
 - Event listener `q('presetSelect').addEventListener('change', onPresetSelect)` wired alongside existing listeners
 
 ### Dependencies
-- Depends on: Task 4 (SLIDER_RANGES), Task 5 (preset API), Task 9 (refreshSliders) \u2014 all DONE \u2713
+- Depends on: Task 4 (SLIDER_RANGES), Task 5 (preset API), Task 9 (refreshSliders) — all DONE ✓
 - Blocks: Task 12, 14, 15
+
+## Task 7: Optional ROI cropping after center detection
+
+### What changed
+- Added `use_roi` (bool, default False) and `roi_margin` (float, default 1.5) to `load_config()` defaults
+- Added both to `ALLOWED_DETECT_KEYS`, `update_config()` allowed set, `/detect`, `/api/one-shot`, and `set_stream_detect_config()`
+- In `GaugeDetector._run_detection()` in `gauge_reader/detector.py`:
+  - After center detection (cx, cy, radius at detection resolution) and BEFORE needle detection:
+  - If `use_roi` is truthy: crop `proc` to `[cx±radius*margin, cy±radius*margin]`
+  - Update cx, cy, cy_adjusted relative to crop; keep radius unchanged
+  - Also crop `debug_proc` to match
+  - Run needle detection on cropped frame
+  - After detection: add back ROI offset (`roi_dx`, `roi_dy`) before upscaling to original coords
+- Frontend: `use_roi` checkbox + `roi_margin` slider (1.0–3.0, step 0.1) in Detection card
+- `roi_margin` added to `SLIDER_RANGES` in index.html
+- Wired through all JS paths: `getFormValues()`, `startStreamDetection()`, `pollOverlay()`, `callOneShot()`, `oneShot()`
+- String '0'/'1' boolean parsing: `isinstance(val, str)` check required — `"0"` is truthy in Python
+- `roi_margin` slider uses hidden number input pattern (same as other sliders in Task 9)
+
+### Key decisions
+- ROI cropping happens in preprocessing output (proc), not the raw resized frame
+- debug_proc also cropped so debug images show only the ROI region
+- ROI offset restored in upscale section via `(cx + roi_dx) * inv` / `(cy_adjusted + roi_dy) * inv`
+- Double-check: cy_adjusted recalculation inside ROI block uses the updated cy (post-crop) + center_offset_y
+- Off by default — user must opt in via checkbox
+
+### Test coverage (5 tests, all passing)
+- `test_roi_off_by_default`: use_roi=False, roi_margin=1.5 in load_config() defaults
+- `test_roi_off_identical`: use_roi="0" produces same angle/value/center as no ROI config
+- `test_roi_matches_full_frame`: ROI angle within 10° of full-frame angle for centered gauge
+- `test_roi_cropping_applied`: debug_preprocess image is smaller with ROI enabled
+- `test_roi_different_margins_different_crops`: total pixel area larger with bigger margin
+
+### Dependencies
+- Depends on: Task 1 (GaugeDetector class) — DONE ✓
+- Blocks: Tasks 14, 15

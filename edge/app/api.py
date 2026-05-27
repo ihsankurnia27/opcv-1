@@ -101,6 +101,8 @@ def load_config():
     defaults.setdefault("cam_auto_exposure", True)
     defaults.setdefault("cam_exposure_absolute", -1)
     defaults.setdefault("presets", [])
+    defaults.setdefault("use_roi", False)
+    defaults.setdefault("roi_margin", 1.5)
     return defaults
 
 
@@ -135,6 +137,7 @@ ALLOWED_DETECT_KEYS = {
     "filter_alpha", "filter_max_jump", "filter_window",
     "detect_method", "use_clahe", "center_ema",
     "angle_kalman_R", "angle_kalman_Q", "angle_kalman_dt",
+    "use_roi", "roi_margin",
 }
 
 _detect_config = {}
@@ -551,6 +554,8 @@ def one_shot(
     circle_adaptive_thresh: bool = Form(None),
     circle_dilate: int = Form(None),
     circle_clahe_clip: float = Form(None),
+    use_roi: bool = Form(None),
+    roi_margin: float = Form(None),
 ):
     cfg = load_config()
     # Merge optional overrides
@@ -566,7 +571,9 @@ def one_shot(
                   ("circle_canny_high", circle_canny_high),
                   ("circle_adaptive_thresh", circle_adaptive_thresh),
                   ("circle_dilate", circle_dilate),
-                  ("circle_clahe_clip", circle_clahe_clip)]:
+                  ("circle_clahe_clip", circle_clahe_clip),
+                  ("use_roi", use_roi),
+                  ("roi_margin", roi_margin)]:
         if v is not None:
             cfg[k] = v
 
@@ -700,6 +707,7 @@ def update_config(body: dict):
         "overlay_fps", "center_ema", "angle_kalman_R", "angle_kalman_Q", "angle_kalman_dt",
         "cam_brightness", "cam_contrast", "cam_gain",
         "cam_auto_exposure", "cam_exposure_absolute",
+        "use_roi", "roi_margin",
     }
     for k, v in body.items():
         if k in allowed:
@@ -905,6 +913,8 @@ async def detect(
     need_annotation: bool = Form(True),
     detect_method: str = Form("auto"),
     use_clahe: bool = Form(True),
+    use_roi: bool = Form(False),
+    roi_margin: float = Form(1.5),
 ):
     contents = await image.read()
     np_arr = np.frombuffer(contents, np.uint8)
@@ -930,6 +940,8 @@ async def detect(
         "max_value": max_value,
         "detect_method": detect_method,
         "use_clahe": use_clahe,
+        "use_roi": use_roi,
+        "roi_margin": roi_margin,
     }
     result = _run_detection(img, cfg)
     if result.get("error"):

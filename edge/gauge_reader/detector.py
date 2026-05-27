@@ -240,6 +240,28 @@ class GaugeDetector:
 
         cy_adjusted = cy + int(cfg["center_offset_y"])
 
+        # ── ROI crop (optional, before needle detection) ────
+        roi_dx = 0
+        roi_dy = 0
+        roi_enabled = cfg.get("use_roi", False)
+        if isinstance(roi_enabled, str):
+            roi_enabled = roi_enabled.lower() in ("1", "true")
+        if roi_enabled:
+            margin_val = float(cfg.get("roi_margin", 1.5))
+            x1 = max(0, int(cx - radius * margin_val))
+            y1 = max(0, int(cy - radius * margin_val))
+            x2 = min(proc.shape[1], int(cx + radius * margin_val))
+            y2 = min(proc.shape[0], int(cy + radius * margin_val))
+            cropped = proc[y1:y2, x1:x2].copy()
+            cx -= x1
+            cy -= y1
+            cy_adjusted = cy + int(cfg["center_offset_y"])
+            proc = cropped
+            if debug_proc is not None:
+                debug_proc = debug_proc[y1:y2, x1:x2].copy()
+            roi_dx = x1
+            roi_dy = y1
+
         # ── Needle detection ────────────────────────────────
         debug_binary = None
         if method == "radial":
@@ -277,8 +299,8 @@ class GaugeDetector:
 
         # ── Upscale coords ──────────────────────────────────
         inv = 1.0 / scale if scale != 1.0 else 1.0
-        cx_out = int(cx * inv)
-        cy_out = int(cy_adjusted * inv)
+        cx_out = int((cx + roi_dx) * inv)
+        cy_out = int((cy_adjusted + roi_dy) * inv)
         radius_out = int(radius * inv)
 
         # ── Debug images (at detection resolution) ──────────
