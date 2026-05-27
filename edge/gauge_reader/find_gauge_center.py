@@ -160,8 +160,11 @@ def find_gauge_center(image, prev_center=None, ema_alpha=0.3, use_clahe=True, **
     return None
 
 
-def find_gauge_center_legacy(image):
-    """Original SimpleBlobDetector → HoughCircles method. Kept for backward compat."""
+def find_gauge_center_legacy(image, **kwargs):
+    """Original SimpleBlobDetector → HoughCircles method. Kept for backward compat.
+
+    Supports optional circle_* kwargs to override defaults passed from config.
+    """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape[:2]
 
@@ -186,16 +189,24 @@ def find_gauge_center_legacy(image):
         if radius > 10:
             return cx, cy, radius
 
+    # Use config params if provided, otherwise legacy defaults
+    dp_val = float(kwargs.get("circle_hough_dp", 1))
+    p1_val = float(kwargs.get("circle_hough_param1", 100))
+    p2_val = float(kwargs.get("circle_hough_param2", 50))
+    min_r = float(kwargs.get("circle_min_radius_ratio", 0.05))
+    max_r = float(kwargs.get("circle_max_radius_ratio", 0.45))
+    min_d = float(kwargs.get("circle_min_dist_ratio", 0.3))
+
     blurred = cv2.GaussianBlur(gray, (9, 9), 2)
     circles = cv2.HoughCircles(
         blurred,
         cv2.HOUGH_GRADIENT,
-        dp=1,
-        minDist=h * 0.3,
-        param1=80,
-        param2=40,
-        minRadius=int(w * 0.05),
-        maxRadius=int(w * 0.45),
+        dp=dp_val,
+        minDist=h * min_d,
+        param1=p1_val,
+        param2=p2_val,
+        minRadius=int(w * min_r),
+        maxRadius=int(w * max_r),
     )
     if circles is not None:
         c = circles[0][0]

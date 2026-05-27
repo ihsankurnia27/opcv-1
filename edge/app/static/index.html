@@ -824,6 +824,31 @@ input[type="password"] { letter-spacing: .2em; }
     </div>
 
     <div class="card">
+      <div class="card-title">Camera Controls (V4L2)</div>
+      <div class="field-row single">
+        <div class="field-group" style="opacity:0.7;font-size:.7rem">
+          Values take effect after a stream restart. Set to -1 to leave at driver default.
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Brightness</label><input id="cam_brightness" type="number" step="1" value="-1" min="-1" max="255"></div>
+        <div class="field-group"><label>Contrast</label><input id="cam_contrast" type="number" step="1" value="-1" min="-1" max="255"></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Gain</label><input id="cam_gain" type="number" step="1" value="-1" min="-1" max="255"></div>
+        <div class="field-group"><label>Exposure (abs)</label><input id="cam_exposure_absolute" type="number" step="1" value="-1" min="-1" max="10000"></div>
+      </div>
+      <div class="field-row single">
+        <div class="field-group">
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="cam_auto_exposure" checked style="width:auto">
+            Auto Exposure
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Calibration</div>
       <div class="field-row">
         <div class="field-group"><label title="Numerical value at the minimum angle position.">Min Value</label><input id="min_value" type="number" step="any" value="0"></div>
@@ -1575,12 +1600,14 @@ function getFormValues() {
     'detect_method','use_clahe','center_ema','angle_kalman_R','angle_kalman_Q',
     'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
     'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
-    'circle_adaptive_thresh', 'circle_canny_low', 'circle_canny_high', 'circle_dilate', 'circle_clahe_clip'];
+    'circle_adaptive_thresh', 'circle_canny_low', 'circle_canny_high', 'circle_dilate', 'circle_clahe_clip',
+    'cam_brightness', 'cam_contrast', 'cam_gain', 'cam_exposure_absolute'];
   const vals = {};
   fields.forEach(k => { const el = q(k); if (el) vals[k] = el.value; });
   // Checkbox fields
   vals['use_clahe'] = q('use_clahe')?.checked ? '1' : '0';
   vals['circle_adaptive_thresh'] = q('circle_adaptive_thresh')?.checked ? '1' : '0';
+  vals['cam_auto_exposure'] = q('cam_auto_exposure')?.checked ? true : false;
   return vals;
 }
 

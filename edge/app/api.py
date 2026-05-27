@@ -94,6 +94,12 @@ def load_config():
     defaults.setdefault("center_ema", 0.3)
     defaults.setdefault("angle_kalman_R", 0.1)
     defaults.setdefault("angle_kalman_Q", 0.01)
+    # V4L2 camera controls
+    defaults.setdefault("cam_brightness", -1)
+    defaults.setdefault("cam_contrast", -1)
+    defaults.setdefault("cam_gain", -1)
+    defaults.setdefault("cam_auto_exposure", True)
+    defaults.setdefault("cam_exposure_absolute", -1)
     return defaults
 
 
@@ -240,6 +246,24 @@ def _reader_loop(camera_id, width, height):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+    # Apply V4L2 controls from config
+    cfg = load_config()
+    brightness = int(cfg.get("cam_brightness", -1))
+    if brightness >= 0:
+        cap.set(cv2.CAP_PROP_BRIGHTNESS, brightness)
+    contrast = int(cfg.get("cam_contrast", -1))
+    if contrast >= 0:
+        cap.set(cv2.CAP_PROP_CONTRAST, contrast)
+    gain = int(cfg.get("cam_gain", -1))
+    if gain >= 0:
+        cap.set(cv2.CAP_PROP_GAIN, gain)
+    auto_exp = cfg.get("cam_auto_exposure", True)
+    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1 if auto_exp else 0)
+    exposure = int(cfg.get("cam_exposure_absolute", -1))
+    if exposure >= 0:
+        cap.set(cv2.CAP_PROP_EXPOSURE, exposure)
+
     last_detect = 0
     try:
         while not _bg_stop.is_set():
@@ -465,12 +489,25 @@ def _run_detection(frame, cfg):
         proc = preprocess(small, clahe=use_clahe, denoise=True)
     else:
         proc = small
+        if use_clahe:
+            gray_proc = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray_proc)
+            proc = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
 
     debug_proc = proc.copy()
 
     # Center detection
     if method == "radial":
-        center_result = find_gauge_center_legacy(proc)
+        center_result = find_gauge_center_legacy(
+            proc,
+            circle_hough_dp=float(cfg.get("circle_hough_dp", 1)),
+            circle_hough_param1=float(cfg.get("circle_hough_param1", 100)),
+            circle_hough_param2=float(cfg.get("circle_hough_param2", 50)),
+            circle_min_radius_ratio=float(cfg.get("circle_min_radius_ratio", 0.05)),
+            circle_max_radius_ratio=float(cfg.get("circle_max_radius_ratio", 0.45)),
+            circle_min_dist_ratio=float(cfg.get("circle_min_dist_ratio", 0.3)),
+        )
         if center_result is None:
             return {"error": "could not find gauge center"}
         cx, cy, radius = center_result
@@ -786,6 +823,8 @@ def update_config(body: dict):
         "filter_alpha", "filter_max_jump", "filter_window",
         "detect_method", "use_clahe", "use_difference_ref",
         "overlay_fps", "center_ema", "angle_kalman_R", "angle_kalman_Q",
+        "cam_brightness", "cam_contrast", "cam_gain",
+        "cam_auto_exposure", "cam_exposure_absolute",
     }
     for k, v in body.items():
         if k in allowed:
