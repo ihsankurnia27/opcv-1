@@ -210,3 +210,24 @@
 ### Test coverage
 - 11 new tests in `tests/test_slider_html.py` covering: slider existence, value labels, oninput handlers, hidden inputs, min/max/step matching, getFormValues() compatibility, refreshSliders function, debounce config
 - All 104 tests pass (11 new + 93 existing)
+
+## Task 8: Preset management UI panel
+
+### What was added
+- New "Presets" config card in index.html (between Detection and Smoothing v2 cards)
+- Dropdown `<select id="presetSelect">` populated from `GET /api/presets` on load
+- Preset info line showing "N params \u2014 saved DATE" on select change via `onPresetSelect()`
+- Button row: Load (POST /api/presets/{id}/apply + refreshSliders), Save Current (prompt + getFormValues + POST /api/presets), Delete (confirm + DELETE /api/presets/{id} + reload list), Refresh (re-fetch)
+
+### Key decisions
+- `presetsList` global array stores full preset data for info lookup (same pattern as `pointsList`)
+- `deletePreset()` uses raw `fetch` (not `api()` helper) because DELETE returns 204 No Content \u2014 `api()` calls `r.json()` which would fail
+- Empty state: `<option>` text "No presets saved yet" when no presets exist, "Select a preset\u2026" placeholder when presets exist
+- Load/Delete buttons disabled when no preset selected
+- `loadPresets()` called from `loadConfig()` (auto-populates on page load) and after save/delete
+- CSS for `.preset-info` (info line) and `.preset-actions` (flex button row) added in style section
+- Event listener `q('presetSelect').addEventListener('change', onPresetSelect)` wired alongside existing listeners
+
+### Dependencies
+- Depends on: Task 4 (SLIDER_RANGES), Task 5 (preset API), Task 9 (refreshSliders) \u2014 all DONE \u2713
+- Blocks: Task 12, 14, 15

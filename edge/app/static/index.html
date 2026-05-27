@@ -738,6 +738,20 @@ input[type="range"]:focus::-webkit-slider-thumb {
 input[type="range"]:focus::-moz-range-thumb {
   box-shadow: 0 0 0 3px rgba(20,184,166,0.3);
 }
+
+/* PRESET CARD */
+.preset-info {
+  font-size: .75rem;
+  color: var(--md-on-surface-variant);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.preset-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.preset-actions .btn { flex: 1; }
 </style>
 </head>
 <body>
@@ -1157,6 +1171,25 @@ input[type="range"]:focus::-moz-range-thumb {
       </div>
     </div>
 
+    <!-- PRESETS -->
+    <div class="card">
+      <div class="card-title">Presets</div>
+      <div class="field-row single">
+        <div class="field-group">
+          <select id="presetSelect">
+            <option value="">No presets saved yet</option>
+          </select>
+        </div>
+      </div>
+      <div id="presetInfo" class="preset-info" style="display:none"></div>
+      <div class="preset-actions">
+        <button class="btn btn-sm btn-primary" id="btn-load-preset" onclick="loadPreset()" disabled>Load</button>
+        <button class="btn btn-sm btn-tonal" onclick="savePreset()">Save Current</button>
+        <button class="btn btn-sm" id="btn-delete-preset" onclick="deletePreset()" disabled>Delete</button>
+        <button class="btn btn-sm" onclick="loadPresets()">Refresh</button>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-title">Smoothing v2</div>
       <div class="field-row three">
@@ -1336,6 +1369,7 @@ let calSnapshotResult = null;
 let calImageBlob = null;
 let lastResult = null;
 let pointsList = [];
+let presetsList = [];
 
 function q(id) { return document.getElementById(id); }
 
@@ -1972,6 +2006,7 @@ async function loadConfig() {
       }
     }
     refreshSliders();
+    loadPresets();
     toast('[OK] Config loaded');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
@@ -2347,10 +2382,104 @@ function refreshSliders() {
   }
 }
 
+// === Presets ===
+async function loadPresets() {
+  try {
+    const presets = await api('GET', '/api/presets');
+    presetsList = presets || [];
+    const sel = q('presetSelect');
+    const loadBtn = q('btn-load-preset');
+    const delBtn = q('btn-delete-preset');
+    const info = q('presetInfo');
+    sel.innerHTML = '';
+    info.style.display = 'none';
+    if (!presets || !presets.length) {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = 'No presets saved yet';
+      sel.appendChild(o);
+      loadBtn.disabled = true;
+      delBtn.disabled = true;
+    } else {
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Select a preset\u2026';
+      sel.appendChild(empty);
+      presets.forEach(p => {
+        const o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = p.name;
+        sel.appendChild(o);
+      });
+      loadBtn.disabled = false;
+      delBtn.disabled = false;
+    }
+  } catch(e) { toast('[FAIL] Load presets: ' + e.message, 'error'); }
+}
+
+function onPresetSelect() {
+  const sel = q('presetSelect');
+  const id = sel.value;
+  const loadBtn = q('btn-load-preset');
+  const delBtn = q('btn-delete-preset');
+  const info = q('presetInfo');
+  if (!id) {
+    info.style.display = 'none';
+    loadBtn.disabled = true;
+    delBtn.disabled = true;
+    return;
+  }
+  const preset = presetsList.find(p => p.id === id);
+  if (preset) {
+    const n = preset.params ? Object.keys(preset.params).length : 0;
+    const d = preset.created ? new Date(preset.created).toLocaleDateString() : 'unknown';
+    info.textContent = n + ' params \u2014 saved ' + d;
+    info.style.display = 'block';
+  }
+  loadBtn.disabled = false;
+  delBtn.disabled = false;
+}
+
+async function loadPreset() {
+  const sel = q('presetSelect');
+  const id = sel.value;
+  if (!id) { toast('[WARN] Select a preset first', 'error'); return; }
+  try {
+    await api('POST', '/api/presets/' + id + '/apply');
+    refreshSliders();
+    toast('[OK] Preset applied');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+}
+
+async function savePreset() {
+  const name = prompt('Preset name:');
+  if (!name) return;
+  const vals = getFormValues();
+  try {
+    await api('POST', '/api/presets', { name: name, params: vals });
+    await loadPresets();
+    toast('[OK] Preset saved');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+}
+
+async function deletePreset() {
+  const sel = q('presetSelect');
+  const id = sel.value;
+  if (!id) { toast('[WARN] Select a preset first', 'error'); return; }
+  if (!confirm('Delete this preset?')) return;
+  try {
+    const r = await fetch(API + '/api/presets/' + id, { method: 'DELETE' });
+    if (!r.ok) throw new Error(await r.text());
+    await loadPresets();
+    toast('[OK] Preset deleted');
+  } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
+}
+
 // === Init ===
 window.addEventListener('resize', () => { if (streamActive) updateCanvasSize(); });
 
 q('point').addEventListener('change', fillPointValues);
+q('presetSelect').addEventListener('change', onPresetSelect);
 q('feed-canvas').addEventListener('click', onCalCanvasClick);
 
 (async function init() {
