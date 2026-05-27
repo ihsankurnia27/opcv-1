@@ -529,7 +529,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-5-unknown-keys.txt
   ```
 
-- [ ] 6. Confidence-based rejection in detection output
+- [x] 6. Confidence-based rejection in detection output
 
   **What to do**:
   - Add `"confidence": float` field to detection result dict in `_run_detection()` (api.py:616-626)
@@ -593,7 +593,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-6-rejected.txt
   ```
 
-- [ ] 7. Optional ROI cropping after center detection
+- [x] 7. Optional ROI cropping after center detection
 
   **What to do**:
   - Add `use_roi: bool` (default false) and `roi_margin: float` (default 1.5) to config
@@ -655,7 +655,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-7-roi-match.txt
   ```
 
-- [ ] 8. Preset management UI panel
+- [x] 8. Preset management UI panel
 
   **What to do**:
   - Add a new config card "Presets" in index.html (between Detection and Smoothing cards)

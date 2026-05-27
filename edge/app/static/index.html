@@ -897,7 +897,10 @@ input[type="range"]:focus::-moz-range-thumb {
     </div>
 
     <div class="card">
-      <div class="card-title">Camera Controls (V4L2)</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Camera Controls (V4L2)</span>
+        <button class="btn btn-xs" onclick="resetCard('camera')">Reset</button>
+      </div>
       <div class="field-row single">
         <div class="field-group" style="opacity:0.7;font-size:.7rem">
           Values take effect after a stream restart. Set to -1 to leave at driver default.
@@ -946,7 +949,10 @@ input[type="range"]:focus::-moz-range-thumb {
     </div>
 
     <div class="card">
-      <div class="card-title">Calibration</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Calibration</span>
+        <button class="btn btn-xs" onclick="resetCard('calibration')">Reset</button>
+      </div>
       <div class="field-row">
         <div class="field-group"><label title="Numerical value at the minimum angle position.">Min Value</label>
           <div class="slider-container">
@@ -986,7 +992,10 @@ input[type="range"]:focus::-moz-range-thumb {
     </div>
 
     <div class="card">
-      <div class="card-title">Circle Tuning</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Circle Tuning</span>
+        <button class="btn btn-xs" onclick="resetCard('circle')">Reset</button>
+      </div>
       <div class="field-row">
         <div class="field-group"><label title="Canny threshold for Hough gradient. Higher = fewer edges.">Hough Param 1</label>
           <div class="slider-container">
@@ -1088,7 +1097,10 @@ input[type="range"]:focus::-moz-range-thumb {
     </div>
 
     <div class="card">
-      <div class="card-title">Detection</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Detection</span>
+        <button class="btn btn-xs" onclick="resetCard('detection')">Reset</button>
+      </div>
       <div class="field-row three">
         <div class="field-group"><label title="Vertical adjustment of the detected gauge center in pixels.">Y Offset</label>
           <div class="slider-container">
@@ -1208,7 +1220,10 @@ input[type="range"]:focus::-moz-range-thumb {
     </div>
 
     <div class="card">
-      <div class="card-title">Smoothing v2</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Smoothing v2</span>
+        <button class="btn btn-xs" onclick="resetCard('smoothing_v2')">Reset</button>
+      </div>
       <div class="field-row three">
         <div class="field-group"><label title="EMA alpha for gauge center tracking. Lower = smoother/laggy centers.">Center EMA</label>
           <div class="slider-container">
@@ -1237,7 +1252,10 @@ input[type="range"]:focus::-moz-range-thumb {
     </div>
 
     <div class="card">
-      <div class="card-title">Smoothing</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Smoothing</span>
+        <button class="btn btn-xs" onclick="resetCard('smoothing')">Reset</button>
+      </div>
       <div class="field-row three">
         <div class="field-group"><label title="EMA alpha for value smoothing. Lower = more smoothing/lag.">EMA Alpha</label>
           <div class="slider-container">
@@ -1267,7 +1285,10 @@ input[type="range"]:focus::-moz-range-thumb {
     </div>
 
     <div class="card">
-      <div class="card-title">Schedule</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Schedule</span>
+        <button class="btn btn-xs" onclick="resetCard('schedule')">Reset</button>
+      </div>
       <div class="field-row single">
         <div class="field-group"><label title="Time between automated readings and server submissions.">Interval (seconds)</label>
           <div class="slider-container">
@@ -1388,6 +1409,7 @@ let calImageBlob = null;
 let lastResult = null;
 let pointsList = [];
 let presetsList = [];
+let lastSavedConfig = null;
 
 function q(id) { return document.getElementById(id); }
 
@@ -2073,6 +2095,7 @@ async function loadConfig() {
     }
     refreshSliders();
     loadPresets();
+    lastSavedConfig = JSON.parse(JSON.stringify(c));
     toast('[OK] Config loaded');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
@@ -2376,6 +2399,7 @@ async function saveConfig() {
   try {
     await api('POST', '/api/config', body);
     refreshSliders();
+    lastSavedConfig = JSON.parse(JSON.stringify(body));
     toast('[OK] Config written');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
@@ -2448,6 +2472,35 @@ function refreshSliders() {
       if (src) valSpan.textContent = src.value;
     }
   }
+}
+
+// === Card Reset ===
+const CARD_FIELDS = {
+    'detection': ['inner_ratio', 'outer_ratio', 'blur_kernel', 'threshold_block', 'threshold_c', 'use_clahe', 'clahe_clip', 'clahe_tile', 'use_roi', 'roi_margin'],
+    'circle': ['circle_hough_param1', 'circle_hough_param2', 'circle_hough_dp', 'circle_canny_low', 'circle_canny_high', 'circle_dilate', 'circle_clahe_clip', 'circle_adaptive_thresh', 'circle_min_circularity', 'circle_min_dist_ratio', 'circle_min_radius_ratio', 'circle_max_radius_ratio'],
+    'calibration': ['min_value', 'max_value', 'min_angle', 'max_angle', 'center_offset_y'],
+    'smoothing': ['filter_alpha', 'filter_max_jump', 'filter_window'],
+    'smoothing_v2': ['center_ema', 'angle_kalman_R', 'angle_kalman_Q'],
+    'camera': ['cam_brightness', 'cam_contrast', 'cam_gain', 'cam_exposure_absolute', 'cam_auto_exposure', 'cam_resolution'],
+    'schedule': ['interval_seconds']
+};
+
+function resetCard(cardKey) {
+  const fields = CARD_FIELDS[cardKey];
+  if (!fields) { toast('[WARN] Unknown card: ' + cardKey, 'error'); return; }
+  if (!lastSavedConfig) { toast('[WARN] No saved config to restore', 'error'); return; }
+  fields.forEach(id => {
+    if (lastSavedConfig[id] === undefined) return;
+    const el = q(id);
+    if (!el) return;
+    if (el.type === 'checkbox') {
+      el.checked = lastSavedConfig[id] === true || lastSavedConfig[id] === 1 || lastSavedConfig[id] === '1';
+    } else {
+      el.value = lastSavedConfig[id];
+    }
+  });
+  refreshSliders();
+  toast('[OK] ' + cardKey + ' reset to saved values');
 }
 
 // === Presets ===

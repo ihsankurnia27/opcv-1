@@ -308,3 +308,28 @@
 ### Dependencies
 - Depends on: Task 1 (GaugeDetector class) — DONE ✓
 - Blocks: Tasks 14, 15
+
+## Task 10: Per-card Reset button to restore last-saved config
+
+### What changed
+- Added `let lastSavedConfig = null;` state variable
+- Added `CARD_FIELDS` mapping object: 7 card keys → field ID arrays (center_offset_y excluded from detection, only in calibration per spec)
+- Added `resetCard(cardKey)` function: looks up fields from CARD_FIELDS, restores each from `lastSavedConfig` (checkbox-aware), calls `refreshSliders()`
+- Populated `lastSavedConfig` in `loadConfig()` from server response (after `refreshSliders()` + `loadPresets()`)
+- Populated `lastSavedConfig` in `saveConfig()` from form body (after `refreshSliders()`)
+- Added "Reset" button (`.btn.btn-xs` outlined) to 7 card headers: Camera Controls, Calibration, Circle Tuning, Detection, Smoothing v2, Smoothing, Schedule
+- Button positioned top-right via flexbox on `.card-title` div
+- Presets card excluded from reset (no button)
+
+### Key decisions
+- `center_offset_y` excluded from detection CARD_FIELDS (only in calibration) — field sits in Detection card HTML but is conceptually a calibration param
+- Checkbox handling in resetCard uses same `true/1/'1'` pattern as loadConfig()
+- After save, `getFormValues()` body is captured (not a re-fetch) — client-side consistency is sufficient
+- `lastSavedConfig` from loadConfig uses raw server response; from saveConfig uses form body (cam_resolution via save, not cam_width/cam_height)
+
+### Test coverage
+- None added (UI-only JS change)
+
+### Dependencies
+- Depends on: Task 9 (refreshSliders, slider inputs) — DONE ✓
+- Blocks: Tasks 14, 15
