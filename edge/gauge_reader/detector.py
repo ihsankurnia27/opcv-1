@@ -173,13 +173,16 @@ class GaugeDetector:
             small = frame
 
         # ── Preprocess ──────────────────────────────────────
+        cl_clip = float(cfg.get("clahe_clip", 2.0))
+        cl_tile = int(cfg.get("clahe_tile", 8))
         if method != "radial":
-            proc = preprocess(small, clahe=use_clahe, denoise=True)
+            proc = preprocess(small, clahe=use_clahe, denoise=True,
+                              clahe_clip=cl_clip, clahe_tile=cl_tile)
         else:
             proc = small
             if use_clahe:
                 gray_proc = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                clahe = cv2.createCLAHE(clipLimit=cl_clip, tileGridSize=(cl_tile, cl_tile))
                 enhanced = clahe.apply(gray_proc)
                 proc = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
 
