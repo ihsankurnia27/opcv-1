@@ -673,11 +673,70 @@ input[type="password"] { letter-spacing: .2em; }
 }
 
 /* RESPONSIVE */
-@media (max-width: 640px) {
+  @media (max-width: 640px) {
   .app-header { padding: 0 12px; }
   .toolbar { padding: 8px 12px; }
   .main-grid { padding: 12px; }
   .brand-name { font-size: 1.125rem; }
+}
+
+/* SLIDER CONTAINER */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.slider-container input[type="range"] { flex: 1; }
+.slider-value {
+  min-width: 3em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: .8125rem;
+  color: var(--md-on-surface);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* CUSTOM RANGE INPUT — MD3 teal accent */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: rgba(0,0,0,0.12);
+  border-radius: 2px;
+  outline: none;
+  border: none;
+  transition: background .15s;
+  margin: 6px 0;
+  padding: 0;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #14b8a6;
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s;
+  border: none;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #14b8a6;
+  cursor: pointer;
+  border: none;
+}
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+input[type="range"]::-moz-range-thumb:hover { transform: scale(1.2); }
+input[type="range"]:focus { background: rgba(20,184,166,0.2); }
+input[type="range"]:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.3);
+}
+input[type="range"]:focus::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.3);
 }
 </style>
 </head>
@@ -831,12 +890,36 @@ input[type="password"] { letter-spacing: .2em; }
         </div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Brightness</label><input id="cam_brightness" type="number" step="1" value="-1" min="-1" max="255"></div>
-        <div class="field-group"><label>Contrast</label><input id="cam_contrast" type="number" step="1" value="-1" min="-1" max="255"></div>
+        <div class="field-group"><label>Brightness</label>
+          <div class="slider-container">
+            <input type="range" id="cam_brightness_slider" min="-1" max="255" step="1" value="-1" oninput="onSliderInput(this,'cam_brightness')">
+            <span id="cam_brightness_val" class="slider-value">-1</span>
+          </div>
+          <input id="cam_brightness" type="number" style="display:none" step="1" value="-1" min="-1" max="255">
+        </div>
+        <div class="field-group"><label>Contrast</label>
+          <div class="slider-container">
+            <input type="range" id="cam_contrast_slider" min="-1" max="255" step="1" value="-1" oninput="onSliderInput(this,'cam_contrast')">
+            <span id="cam_contrast_val" class="slider-value">-1</span>
+          </div>
+          <input id="cam_contrast" type="number" style="display:none" step="1" value="-1" min="-1" max="255">
+        </div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label>Gain</label><input id="cam_gain" type="number" step="1" value="-1" min="-1" max="255"></div>
-        <div class="field-group"><label>Exposure (abs)</label><input id="cam_exposure_absolute" type="number" step="1" value="-1" min="-1" max="10000"></div>
+        <div class="field-group"><label>Gain</label>
+          <div class="slider-container">
+            <input type="range" id="cam_gain_slider" min="-1" max="255" step="1" value="-1" oninput="onSliderInput(this,'cam_gain')">
+            <span id="cam_gain_val" class="slider-value">-1</span>
+          </div>
+          <input id="cam_gain" type="number" style="display:none" step="1" value="-1" min="-1" max="255">
+        </div>
+        <div class="field-group"><label>Exposure (abs)</label>
+          <div class="slider-container">
+            <input type="range" id="cam_exposure_absolute_slider" min="-1" max="10000" step="10" value="-1" oninput="onSliderInput(this,'cam_exposure_absolute')">
+            <span id="cam_exposure_absolute_val" class="slider-value">-1</span>
+          </div>
+          <input id="cam_exposure_absolute" type="number" style="display:none" step="1" value="-1" min="-1" max="10000">
+        </div>
       </div>
       <div class="field-row single">
         <div class="field-group">
@@ -851,12 +934,36 @@ input[type="password"] { letter-spacing: .2em; }
     <div class="card">
       <div class="card-title">Calibration</div>
       <div class="field-row">
-        <div class="field-group"><label title="Numerical value at the minimum angle position.">Min Value</label><input id="min_value" type="number" step="any" value="0"></div>
-        <div class="field-group"><label title="Numerical value at the maximum angle position.">Max Value</label><input id="max_value" type="number" step="any" value="10"></div>
+        <div class="field-group"><label title="Numerical value at the minimum angle position.">Min Value</label>
+          <div class="slider-container">
+            <input type="range" id="min_value_slider" min="-99999" max="99999" step="0.1" value="0" oninput="onSliderInput(this,'min_value')">
+            <span id="min_value_val" class="slider-value">0</span>
+          </div>
+          <input id="min_value" type="number" style="display:none" step="any" value="0">
+        </div>
+        <div class="field-group"><label title="Numerical value at the maximum angle position.">Max Value</label>
+          <div class="slider-container">
+            <input type="range" id="max_value_slider" min="-99999" max="99999" step="0.1" value="10" oninput="onSliderInput(this,'max_value')">
+            <span id="max_value_val" class="slider-value">10</span>
+          </div>
+          <input id="max_value" type="number" style="display:none" step="any" value="10">
+        </div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label title="Starting angle of the gauge scale in degrees (0 = right, 90 = down).">Min Angle</label><input id="min_angle" type="number" min="0" max="360" value="45"></div>
-        <div class="field-group"><label title="Ending angle of the gauge scale in degrees.">Max Angle</label><input id="max_angle" type="number" min="0" max="360" value="315"></div>
+        <div class="field-group"><label title="Starting angle of the gauge scale in degrees (0 = right, 90 = down).">Min Angle</label>
+          <div class="slider-container">
+            <input type="range" id="min_angle_slider" min="0" max="360" step="1" value="45" oninput="onSliderInput(this,'min_angle')">
+            <span id="min_angle_val" class="slider-value">45</span>
+          </div>
+          <input id="min_angle" type="number" style="display:none" min="0" max="360" value="45">
+        </div>
+        <div class="field-group"><label title="Ending angle of the gauge scale in degrees.">Max Angle</label>
+          <div class="slider-container">
+            <input type="range" id="max_angle_slider" min="0" max="360" step="1" value="315" oninput="onSliderInput(this,'max_angle')">
+            <span id="max_angle_val" class="slider-value">315</span>
+          </div>
+          <input id="max_angle" type="number" style="display:none" min="0" max="360" value="315">
+        </div>
       </div>
       <div class="field-row">
         <button class="btn btn-sm" id="btn-auto-cal" onclick="autoCalibrate()" title="Automatically detect scale range from image variance">Auto-Cal</button>
@@ -867,17 +974,59 @@ input[type="password"] { letter-spacing: .2em; }
     <div class="card">
       <div class="card-title">Circle Tuning</div>
       <div class="field-row">
-        <div class="field-group"><label title="Canny threshold for Hough gradient. Higher = fewer edges.">Hough Param 1</label><input id="circle_hough_param1" type="number" step="1" value="100"></div>
-        <div class="field-group"><label title="Accumulator threshold for circle centers. Lower = more (false) circles.">Hough Param 2</label><input id="circle_hough_param2" type="number" step="1" value="30"></div>
+        <div class="field-group"><label title="Canny threshold for Hough gradient. Higher = fewer edges.">Hough Param 1</label>
+          <div class="slider-container">
+            <input type="range" id="circle_hough_param1_slider" min="50" max="300" step="5" value="100" oninput="onSliderInput(this,'circle_hough_param1')">
+            <span id="circle_hough_param1_val" class="slider-value">100</span>
+          </div>
+          <input id="circle_hough_param1" type="number" style="display:none" step="1" value="100">
+        </div>
+        <div class="field-group"><label title="Accumulator threshold for circle centers. Lower = more (false) circles.">Hough Param 2</label>
+          <div class="slider-container">
+            <input type="range" id="circle_hough_param2_slider" min="10" max="150" step="5" value="30" oninput="onSliderInput(this,'circle_hough_param2')">
+            <span id="circle_hough_param2_val" class="slider-value">30</span>
+          </div>
+          <input id="circle_hough_param2" type="number" style="display:none" step="1" value="30">
+        </div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label title="Inverse ratio of accumulator resolution to image resolution. 1.0 is default.">Hough DP</label><input id="circle_hough_dp" type="number" step="0.1" value="1.0"></div>
-        <div class="field-group"><label title="Minimum circularity (4*pi*Area/Perimeter^2) for contour strategy.">Min Circularity</label><input id="circle_min_circularity" type="number" step="0.01" value="0.8"></div>
+        <div class="field-group"><label title="Inverse ratio of accumulator resolution to image resolution. 1.0 is default.">Hough DP</label>
+          <div class="slider-container">
+            <input type="range" id="circle_hough_dp_slider" min="0.5" max="3.0" step="0.1" value="1.0" oninput="onSliderInput(this,'circle_hough_dp')">
+            <span id="circle_hough_dp_val" class="slider-value">1.0</span>
+          </div>
+          <input id="circle_hough_dp" type="number" style="display:none" step="0.1" value="1.0">
+        </div>
+        <div class="field-group"><label title="Minimum circularity (4*pi*Area/Perimeter^2) for contour strategy.">Min Circularity</label>
+          <div class="slider-container">
+            <input type="range" id="circle_min_circularity_slider" min="0.1" max="1.0" step="0.05" value="0.8" oninput="onSliderInput(this,'circle_min_circularity')">
+            <span id="circle_min_circularity_val" class="slider-value">0.8</span>
+          </div>
+          <input id="circle_min_circularity" type="number" style="display:none" step="0.01" value="0.8">
+        </div>
       </div>
       <div class="field-row three">
-        <div class="field-group"><label title="Minimum distance between centers of detected circles as fraction of image height.">Min Dist Ratio</label><input id="circle_min_dist_ratio" type="number" step="0.05" value="0.5"></div>
-        <div class="field-group"><label title="Minimum expected gauge radius as fraction of image width.">Min Radius Ratio</label><input id="circle_min_radius_ratio" type="number" step="0.05" value="0.1"></div>
-        <div class="field-group"><label title="Maximum expected gauge radius as fraction of image width.">Max Radius Ratio</label><input id="circle_max_radius_ratio" type="number" step="0.05" value="0.5"></div>
+        <div class="field-group"><label title="Minimum distance between centers of detected circles as fraction of image height.">Min Dist Ratio</label>
+          <div class="slider-container">
+            <input type="range" id="circle_min_dist_ratio_slider" min="0.1" max="1.0" step="0.05" value="0.5" oninput="onSliderInput(this,'circle_min_dist_ratio')">
+            <span id="circle_min_dist_ratio_val" class="slider-value">0.5</span>
+          </div>
+          <input id="circle_min_dist_ratio" type="number" style="display:none" step="0.05" value="0.5">
+        </div>
+        <div class="field-group"><label title="Minimum expected gauge radius as fraction of image width.">Min Radius Ratio</label>
+          <div class="slider-container">
+            <input type="range" id="circle_min_radius_ratio_slider" min="0.01" max="0.4" step="0.05" value="0.1" oninput="onSliderInput(this,'circle_min_radius_ratio')">
+            <span id="circle_min_radius_ratio_val" class="slider-value">0.1</span>
+          </div>
+          <input id="circle_min_radius_ratio" type="number" style="display:none" step="0.05" value="0.1">
+        </div>
+        <div class="field-group"><label title="Maximum expected gauge radius as fraction of image width.">Max Radius Ratio</label>
+          <div class="slider-container">
+            <input type="range" id="circle_max_radius_ratio_slider" min="0.1" max="0.7" step="0.05" value="0.5" oninput="onSliderInput(this,'circle_max_radius_ratio')">
+            <span id="circle_max_radius_ratio_val" class="slider-value">0.5</span>
+          </div>
+          <input id="circle_max_radius_ratio" type="number" style="display:none" step="0.05" value="0.5">
+        </div>
       </div>
       <div class="field-row" style="margin-top:12px; opacity:0.7">
         <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em">Robustness</div>
@@ -891,21 +1040,64 @@ input[type="password"] { letter-spacing: .2em; }
         </div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label title="Low threshold for Canny edge detector (Circle detection).">Canny Low</label><input id="circle_canny_low" type="number" value="50"></div>
-        <div class="field-group"><label title="High threshold for Canny edge detector (Circle detection).">Canny High</label><input id="circle_canny_high" type="number" value="150"></div>
+        <div class="field-group"><label title="Low threshold for Canny edge detector (Circle detection).">Canny Low</label>
+          <div class="slider-container">
+            <input type="range" id="circle_canny_low_slider" min="10" max="300" step="5" value="50" oninput="onSliderInput(this,'circle_canny_low')">
+            <span id="circle_canny_low_val" class="slider-value">50</span>
+          </div>
+          <input id="circle_canny_low" type="number" style="display:none" value="50">
+        </div>
+        <div class="field-group"><label title="High threshold for Canny edge detector (Circle detection).">Canny High</label>
+          <div class="slider-container">
+            <input type="range" id="circle_canny_high_slider" min="20" max="500" step="5" value="150" oninput="onSliderInput(this,'circle_canny_high')">
+            <span id="circle_canny_high_val" class="slider-value">150</span>
+          </div>
+          <input id="circle_canny_high" type="number" style="display:none" value="150">
+        </div>
       </div>
       <div class="field-row">
-        <div class="field-group"><label title="Dilation iterations to thicken edges before contour detection.">Edge Dilation</label><input id="circle_dilate" type="number" value="0"></div>
-        <div class="field-group"><label title="Clip limit for CLAHE preprocessing in circle detection.">CLAHE Clip</label><input id="circle_clahe_clip" type="number" step="0.1" value="2.0"></div>
+        <div class="field-group"><label title="Dilation iterations to thicken edges before contour detection.">Edge Dilation</label>
+          <div class="slider-container">
+            <input type="range" id="circle_dilate_slider" min="0" max="10" step="1" value="0" oninput="onSliderInput(this,'circle_dilate')">
+            <span id="circle_dilate_val" class="slider-value">0</span>
+          </div>
+          <input id="circle_dilate" type="number" style="display:none" value="0">
+        </div>
+        <div class="field-group"><label title="Clip limit for CLAHE preprocessing in circle detection.">CLAHE Clip</label>
+          <div class="slider-container">
+            <input type="range" id="circle_clahe_clip_slider" min="0.5" max="10.0" step="0.5" value="2.0" oninput="onSliderInput(this,'circle_clahe_clip')">
+            <span id="circle_clahe_clip_val" class="slider-value">2.0</span>
+          </div>
+          <input id="circle_clahe_clip" type="number" style="display:none" step="0.1" value="2.0">
+        </div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Detection</div>
       <div class="field-row three">
-        <div class="field-group"><label title="Vertical adjustment of the detected gauge center in pixels.">Y Offset</label><input id="center_offset_y" type="number" value="0"><div class="help">px, + = down</div></div>
-        <div class="field-group"><label title="Inner radius of needle search area as fraction of gauge radius.">Inner Ratio</label><input id="inner_ratio" type="number" step="0.05" min="0.1" max="0.9" value="0.60"></div>
-        <div class="field-group"><label title="Outer radius of needle search area as fraction of gauge radius.">Outer Ratio</label><input id="outer_ratio" type="number" step="0.05" min="0.2" max="1" value="0.80"></div>
+        <div class="field-group"><label title="Vertical adjustment of the detected gauge center in pixels.">Y Offset</label>
+          <div class="slider-container">
+            <input type="range" id="center_offset_y_slider" min="-200" max="200" step="1" value="0" oninput="onSliderInput(this,'center_offset_y')">
+            <span id="center_offset_y_val" class="slider-value">0</span>
+          </div>
+          <input id="center_offset_y" type="number" style="display:none" value="0">
+          <div class="help">px, + = down</div>
+        </div>
+        <div class="field-group"><label title="Inner radius of needle search area as fraction of gauge radius.">Inner Ratio</label>
+          <div class="slider-container">
+            <input type="range" id="inner_ratio_slider" min="0.1" max="0.95" step="0.05" value="0.60" oninput="onSliderInput(this,'inner_ratio')">
+            <span id="inner_ratio_val" class="slider-value">0.60</span>
+          </div>
+          <input id="inner_ratio" type="number" style="display:none" step="0.05" min="0.1" max="0.9" value="0.60">
+        </div>
+        <div class="field-group"><label title="Outer radius of needle search area as fraction of gauge radius.">Outer Ratio</label>
+          <div class="slider-container">
+            <input type="range" id="outer_ratio_slider" min="0.15" max="1.0" step="0.05" value="0.80" oninput="onSliderInput(this,'outer_ratio')">
+            <span id="outer_ratio_val" class="slider-value">0.80</span>
+          </div>
+          <input id="outer_ratio" type="number" style="display:none" step="0.05" min="0.2" max="1" value="0.80">
+        </div>
       </div>
       <div class="field-row single">
         <div class="field-group">
@@ -927,38 +1119,114 @@ input[type="password"] { letter-spacing: .2em; }
         </div>
       </div>
       <div class="field-row three">
-        <div class="field-group"><label title="CLAHE clip limit — higher = more contrast enhancement.">CLAHE Clip</label><input id="clahe_clip" type="range" min="0.5" max="10" step="0.5" value="2.0"></div>
-        <div class="field-group"><label title="CLAHE tile grid size — larger = more local adaptation.">CLAHE Tile</label><input id="clahe_tile" type="range" min="2" max="16" step="2" value="8"></div>
+        <div class="field-group"><label title="CLAHE clip limit — higher = more contrast enhancement.">CLAHE Clip</label>
+          <div class="slider-container">
+            <input type="range" id="clahe_clip" min="0.5" max="10" step="0.5" value="2.0" oninput="onSliderInput(this,'clahe_clip')">
+            <span id="clahe_clip_val" class="slider-value">2.0</span>
+          </div>
+        </div>
+        <div class="field-group"><label title="CLAHE tile grid size — larger = more local adaptation.">CLAHE Tile</label>
+          <div class="slider-container">
+            <input type="range" id="clahe_tile" min="2" max="16" step="2" value="8" oninput="onSliderInput(this,'clahe_tile')">
+            <span id="clahe_tile_val" class="slider-value">8</span>
+          </div>
+        </div>
       </div>
       <div class="field-row three">
-        <div class="field-group"><label title="Kernel size for Gaussian blur before needle thresholding (must be odd).">Blur Kernel</label><input id="blur_kernel" type="number" step="2" min="1" max="31" value="5"></div>
-        <div class="field-group"><label title="Block size for adaptive thresholding in needle detection.">Threshold Block</label><input id="threshold_block" type="number" step="2" min="0" max="99" value="0"></div>
-        <div class="field-group"><label title="Constant subtracted from mean in adaptive thresholding.">Threshold C</label><input id="threshold_c" type="number" min="0" max="20" value="5"></div>
+        <div class="field-group"><label title="Kernel size for Gaussian blur before needle thresholding (must be odd).">Blur Kernel</label>
+          <div class="slider-container">
+            <input type="range" id="blur_kernel_slider" min="1" max="31" step="2" value="5" oninput="onSliderInput(this,'blur_kernel')">
+            <span id="blur_kernel_val" class="slider-value">5</span>
+          </div>
+          <input id="blur_kernel" type="number" style="display:none" step="2" min="1" max="31" value="5">
+        </div>
+        <div class="field-group"><label title="Block size for adaptive thresholding in needle detection.">Threshold Block</label>
+          <div class="slider-container">
+            <input type="range" id="threshold_block_slider" min="0" max="99" step="2" value="0" oninput="onSliderInput(this,'threshold_block')">
+            <span id="threshold_block_val" class="slider-value">0</span>
+          </div>
+          <input id="threshold_block" type="number" style="display:none" step="2" min="0" max="99" value="0">
+        </div>
+        <div class="field-group"><label title="Constant subtracted from mean in adaptive thresholding.">Threshold C</label>
+          <div class="slider-container">
+            <input type="range" id="threshold_c_slider" min="0" max="20" step="1" value="5" oninput="onSliderInput(this,'threshold_c')">
+            <span id="threshold_c_val" class="slider-value">5</span>
+          </div>
+          <input id="threshold_c" type="number" style="display:none" min="0" max="20" value="5">
+        </div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Smoothing v2</div>
       <div class="field-row three">
-        <div class="field-group"><label title="EMA alpha for gauge center tracking. Lower = smoother/laggy centers.">Center EMA</label><input id="center_ema" type="number" step="0.05" min="0.05" max="0.95" value="0.30"></div>
-        <div class="field-group"><label title="Measurement noise covariance for Angle Kalman Filter. Higher = trust measurement less.">Kalman R</label><input id="angle_kalman_R" type="number" step="0.01" min="0.01" max="5" value="0.10"><div class="help">measurement noise</div></div>
-        <div class="field-group"><label title="Process noise covariance for Angle Kalman Filter. Lower = assume slower needle.">Kalman Q</label><input id="angle_kalman_Q" type="number" step="0.001" min="0.001" max="1" value="0.01"><div class="help">process noise</div></div>
+        <div class="field-group"><label title="EMA alpha for gauge center tracking. Lower = smoother/laggy centers.">Center EMA</label>
+          <div class="slider-container">
+            <input type="range" id="center_ema_slider" min="0.05" max="0.95" step="0.05" value="0.30" oninput="onSliderInput(this,'center_ema')">
+            <span id="center_ema_val" class="slider-value">0.30</span>
+          </div>
+          <input id="center_ema" type="number" style="display:none" step="0.05" min="0.05" max="0.95" value="0.30">
+        </div>
+        <div class="field-group"><label title="Measurement noise covariance for Angle Kalman Filter. Higher = trust measurement less.">Kalman R</label>
+          <div class="slider-container">
+            <input type="range" id="angle_kalman_R_slider" min="0.01" max="5.0" step="0.05" value="0.10" oninput="onSliderInput(this,'angle_kalman_R')">
+            <span id="angle_kalman_R_val" class="slider-value">0.10</span>
+          </div>
+          <input id="angle_kalman_R" type="number" style="display:none" step="0.01" min="0.01" max="5" value="0.10">
+          <div class="help">measurement noise</div>
+        </div>
+        <div class="field-group"><label title="Process noise covariance for Angle Kalman Filter. Lower = assume slower needle.">Kalman Q</label>
+          <div class="slider-container">
+            <input type="range" id="angle_kalman_Q_slider" min="0.001" max="1.0" step="0.005" value="0.01" oninput="onSliderInput(this,'angle_kalman_Q')">
+            <span id="angle_kalman_Q_val" class="slider-value">0.01</span>
+          </div>
+          <input id="angle_kalman_Q" type="number" style="display:none" step="0.001" min="0.001" max="1" value="0.01">
+          <div class="help">process noise</div>
+        </div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Smoothing</div>
       <div class="field-row three">
-        <div class="field-group"><label title="EMA alpha for value smoothing. Lower = more smoothing/lag.">EMA Alpha</label><input id="filter_alpha" type="number" step="0.05" min="0.05" max="0.95" value="0.15"><div class="help">higher = less smoothing</div></div>
-        <div class="field-group"><label title="Maximum change in value allowed between frames before it is treated as a spike.">Max Jump</label><input id="filter_max_jump" type="number" step="0.5" min="0.5" max="10" value="1.5"><div class="help">spike rejection threshold</div></div>
-        <div class="field-group"><label title="Size of the window for median filtering to eliminate outlier noise.">Window</label><input id="filter_window" type="number" min="1" max="21" value="5"><div class="help">median window size</div></div>
+        <div class="field-group"><label title="EMA alpha for value smoothing. Lower = more smoothing/lag.">EMA Alpha</label>
+          <div class="slider-container">
+            <input type="range" id="filter_alpha_slider" min="0.01" max="0.95" step="0.05" value="0.15" oninput="onSliderInput(this,'filter_alpha')">
+            <span id="filter_alpha_val" class="slider-value">0.15</span>
+          </div>
+          <input id="filter_alpha" type="number" style="display:none" step="0.05" min="0.05" max="0.95" value="0.15">
+          <div class="help">higher = less smoothing</div>
+        </div>
+        <div class="field-group"><label title="Maximum change in value allowed between frames before it is treated as a spike.">Max Jump</label>
+          <div class="slider-container">
+            <input type="range" id="filter_max_jump_slider" min="0.1" max="10.0" step="0.5" value="1.5" oninput="onSliderInput(this,'filter_max_jump')">
+            <span id="filter_max_jump_val" class="slider-value">1.5</span>
+          </div>
+          <input id="filter_max_jump" type="number" style="display:none" step="0.5" min="0.5" max="10" value="1.5">
+          <div class="help">spike rejection threshold</div>
+        </div>
+        <div class="field-group"><label title="Size of the window for median filtering to eliminate outlier noise.">Window</label>
+          <div class="slider-container">
+            <input type="range" id="filter_window_slider" min="1" max="21" step="2" value="5" oninput="onSliderInput(this,'filter_window')">
+            <span id="filter_window_val" class="slider-value">5</span>
+          </div>
+          <input id="filter_window" type="number" style="display:none" min="1" max="21" value="5">
+          <div class="help">median window size</div>
+        </div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-title">Schedule</div>
       <div class="field-row single">
-        <div class="field-group"><label title="Time between automated readings and server submissions.">Interval (seconds)</label><input id="interval_seconds" type="number" min="60" value="3600"><div class="help">3600s = 1 hour</div></div>
+        <div class="field-group"><label title="Time between automated readings and server submissions.">Interval (seconds)</label>
+          <div class="slider-container">
+            <input type="range" id="interval_seconds_slider" min="30" max="86400" step="30" value="3600" oninput="onSliderInput(this,'interval_seconds')">
+            <span id="interval_seconds_val" class="slider-value">3600</span>
+          </div>
+          <input id="interval_seconds" type="number" style="display:none" min="60" value="3600">
+          <div class="help">3600s = 1 hour</div>
+        </div>
       </div>
     </div>
 
@@ -1703,6 +1971,7 @@ async function loadConfig() {
         camSel.value = String(c.camera_id);
       }
     }
+    refreshSliders();
     toast('[OK] Config loaded');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
@@ -1736,6 +2005,7 @@ function fillPointValues() {
   if (opt && opt.dataset.min !== undefined) {
     q('min_value').value = opt.dataset.min;
     q('max_value').value = opt.dataset.max;
+    refreshSliders();
   }
 }
 
@@ -1764,6 +2034,7 @@ async function autoCalibrate() {
     if (result.error) { toast('[FAIL] ' + result.error, 'error'); btn.disabled = false; btn.textContent = 'Auto-Cal'; return; }
     q('min_angle').value = result.min_angle;
     q('max_angle').value = result.max_angle;
+    refreshSliders();
     toast('[OK] Angles: ' + result.min_angle + ' deg / ' + result.max_angle + ' deg');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
   btn.disabled = false;
@@ -1971,6 +2242,7 @@ async function applyCalibration() {
   if (calMinAngle === null || calMaxAngle === null) return;
   q('min_angle').value = calMinAngle.toFixed(1);
   q('max_angle').value = calMaxAngle.toFixed(1);
+  refreshSliders();
   toast('[OK] Angles set: ' + calMinAngle.toFixed(1) + ' deg / ' + calMaxAngle.toFixed(1) + ' deg');
 
   if (calImageBlob && calCenter) {
@@ -2000,6 +2272,7 @@ async function saveConfig() {
   const body = getFormValues();
   try {
     await api('POST', '/api/config', body);
+    refreshSliders();
     toast('[OK] Config written');
   } catch(e) { toast('[FAIL] ' + e.message, 'error'); }
 }
@@ -2037,6 +2310,43 @@ function onStreamParamsChange() {
   }
 }
 
+// === Slider helpers ===
+let _sliderDebounceTimer = null;
+
+function onSliderInput(slider, fieldId) {
+  const val = slider.value;
+  const hidden = q(fieldId);
+  if (hidden && hidden !== slider) hidden.value = val;
+  const valSpan = q(fieldId + '_val');
+  if (valSpan) valSpan.textContent = val;
+  debouncedUpdateStreamConfig();
+}
+
+function debouncedUpdateStreamConfig() {
+  if (_sliderDebounceTimer) clearTimeout(_sliderDebounceTimer);
+  _sliderDebounceTimer = setTimeout(() => {
+    _sliderDebounceTimer = null;
+    if (streamDetectActive) startStreamDetection();
+  }, 300);
+}
+
+function refreshSliders() {
+  const keys = Object.keys(SLIDER_RANGES);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const valSpan = q(key + '_val');
+    const slider = q(key + '_slider');
+    const hidden = q(key);
+    if (hidden && slider) {
+      slider.value = hidden.value;
+    }
+    if (valSpan) {
+      const src = slider || hidden;
+      if (src) valSpan.textContent = src.value;
+    }
+  }
+}
+
 // === Init ===
 window.addEventListener('resize', () => { if (streamActive) updateCanvasSize(); });
 
@@ -2046,6 +2356,7 @@ q('feed-canvas').addEventListener('click', onCalCanvasClick);
 (async function init() {
   await checkHealth();
   await loadConfig();
+  refreshSliders();
   fetchVersion();
   setTimeout(fetchPoints, 500);
   setTimeout(enumerateCameras, 600);

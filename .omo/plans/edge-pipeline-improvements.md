@@ -728,7 +728,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-8-empty.png
   ```
 
-- [ ] 9. Slider controls replacing number inputs
+- [x] 9. Slider controls replacing number inputs
 
   **What to do**:
   - Refactor each numeric `<input type="number">` in index.html to use `<input type="range">` with values from `SLIDER_RANGES`
@@ -849,7 +849,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-10-reset.png
   ```
 
-- [ ] 11. Port push_readings.py to shared detection library
+- [x] 11. Port push_readings.py to shared detection library
 
   **What to do**:
   - Replace the duplicated detection logic in `push_readings.py:detect_gauge()` with `GaugeDetector` from `gauge_reader/detector.py`

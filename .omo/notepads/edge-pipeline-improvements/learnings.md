@@ -148,3 +148,65 @@
 - `_run_detection()` remains in api.py as thin wrapper for Task 11 backward compatibility
 - `_DETECT_USE_W`/`_DETECT_MAX_W` kept as class constants (no external dependency on api.py globals)
 - `_reinit_temporal()` continues to work via shared `_center_tracker`/`_angle_kalman` object references
+
+## Task 11: Port push_readings.py to shared GaugeDetector
+
+### What changed
+- `push_readings.py` no longer has `detect_gauge()` — replaced by `GaugeDetector.detect()` + `finalize_result()`
+- Imports reduced from 11 lines to 2:`from gauge_reader.detector import GaugeDetector` + `ValueFilter`
+- Removed imports: base64, numpy, angle_to_value, find_gauge_center, find_gauge_center_legacy, find_needle_angle_legacy, draw_needle, find_needle_angle, preprocess, CenterTracker, AngleKalman
+- Removed `_DETECT_USE_W = 320` constant — GaugeDetector uses internal `_DETECT_USE_W = 480`
+- `do_reading()` takes `detector` instead of `center_tracker`+`angle_kalman`
+- `main()` creates `GaugeDetector(config)` once (owns internal CenterTracker/AngleKalman across loop iterations)
+- `do_reading()` calls `detector.detect(frame)` → `detector.finalize_result(result, frame, 1.0, config)` for annotated_image
+- `ValueFilter` stays in push_readings.py (not part of GaugeDetector)
+
+### Key design decisions
+- GaugeDetector owns its temporal state (CenterTracker/AngleKalman) internally — no need to create them in `main()`
+- `finalize_result()` used to get `annotated_image` for server payload (detect() returns debug images, not base64 JPEG)
+- `upscale=1.0` passed to `finalize_result()` because `detect()` already upscales coords internally
+- Old `_DETECT_USE_W = 320` was actually a bug (commented "matches api.py" but api.py uses 480) — using GaugeDetector's 480 fixes it
+
+### Test results
+- 10 new test cases in `tests/test_push_readings.py` covering: import assertions, output format, consistency, CLI
+- All 93 tests pass (10 new + 83 existing)
+
+## Task 9: Slider controls replacing number inputs
+
+### What changed
+- All 34 numeric `<input type="number">` fields in index.html converted to `<input type="range">` sliders
+- Each slider has: visible range input + `<span class="slider-value">` value label + hidden `<input type="number" style="display:none">` for JS compatibility
+- 2 existing range sliders (clahe_clip, clahe_tile) enhanced with value labels and oninput handlers
+- Slider min/max/step sourced from `SLIDER_RANGES` constant (already defined in Task 4)
+- CSS: MD3 teal accent (#14b8a6) thumb/track with hover scale(1.2) and focus ring glow
+- `.slider-container` flex layout for range + label horizontal alignment
+
+### Key design decisions
+- Hidden number input (`id="fieldname"`) keeps same ID so `getFormValues()`, `loadConfig()`, `saveConfig()` work unchanged
+- Slider gets ID `fieldname_slider` with oninput wiring `onSliderInput(this, 'fieldname')`
+- `onSliderInput()` updates hidden input value + value label, then calls `debouncedUpdateStreamConfig()`
+- Debounce at 300ms — calls `startStreamDetection()` when stream detection is active
+- `refreshSliders()` iterates `Object.keys(SLIDER_RANGES)` — syncs slider positions from hidden inputs
+- For clahe_clip/clahe_tile: element IS the range slider (no hidden input), `refreshSliders()` skips the hidden→slider copy but still updates label
+
+### JavaScript functions added
+- `onSliderInput(slider, fieldId)` — slider event handler
+- `debouncedUpdateStreamConfig()` — 300ms debounce → POST to /api/stream-detect-config
+- `refreshSliders()` — sync all sliders from current form values
+
+### Wire points
+- `loadConfig()` → sets values from API → calls `refreshSliders()`
+- `saveConfig()` → saves to API → calls `refreshSliders()`
+- `init()` → after `loadConfig()` → calls `refreshSliders()`
+- `fillPointValues()` → sets min/max from point → calls `refreshSliders()`
+- `autoCalibrate()` → sets angles from auto-cal → calls `refreshSliders()`
+- `applyCalibration()` → sets angles from manual cal → calls `refreshSliders()`
+
+### Fields excluded (not converted)
+- Checkboxes: use_clahe, circle_adaptive_thresh, cam_auto_exposure
+- Selects: point, camera_id, cam_resolution, detect_method
+- Text inputs: server_api_url, api_key
+
+### Test coverage
+- 11 new tests in `tests/test_slider_html.py` covering: slider existence, value labels, oninput handlers, hidden inputs, min/max/step matching, getFormValues() compatibility, refreshSliders function, debounce config
+- All 104 tests pass (11 new + 93 existing)

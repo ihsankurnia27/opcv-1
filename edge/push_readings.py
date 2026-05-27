@@ -7,7 +7,6 @@ and POSTs result to server API on a configurable interval.
 """
 
 import argparse
-import base64
 import json
 import os
 import sys
@@ -16,17 +15,11 @@ import urllib.request
 import urllib.error
 
 import cv2
-import numpy as np
 
 # Make gauge_reader importable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from gauge_reader import angle_to_value
-from gauge_reader.find_gauge_center import find_gauge_center, find_gauge_center_legacy
-from gauge_reader.find_needle_radial import find_needle_angle as find_needle_angle_legacy, draw_needle
-from gauge_reader.find_needle import find_needle_angle
-from gauge_reader.preprocess import preprocess
-from gauge_reader.temporal import CenterTracker, AngleKalman
+from gauge_reader.detector import GaugeDetector
 from gauge_reader.value_filter import ValueFilter
 
 
@@ -64,102 +57,6 @@ def capture_frame(camera_id=0):
     return frame
 
 
-_DETECT_USE_W = 320  # internal detection resolution, matches api.py
-
-
-def detect_gauge(img, config, center_tracker=None, angle_kalman=None):
-    method = config.get("detect_method", "auto")
-    use_clahe = config.get("use_clahe", True)
-
-    h_orig, w_orig = img.shape[:2]
-    if max(w_orig, h_orig) > _DETECT_USE_W:
-        scale = _DETECT_USE_W / max(w_orig, h_orig)
-        small = cv2.resize(img, (int(w_orig * scale), int(h_orig * scale)),
-                             interpolation=cv2.INTER_AREA)
-    else:
-        scale = 1.0
-        small = img
-
-    # Preprocess
-    if method != "radial":
-        proc = preprocess(small, clahe=use_clahe, denoise=True)
-    else:
-        proc = small
-
-    # Center
-    if method == "radial":
-        center_result = find_gauge_center_legacy(proc)
-        if center_result is None:
-            return None, "could not find gauge center"
-        cx, cy, radius = center_result
-    else:
-        prev = center_tracker.get() if (center_tracker and center_tracker.initialized) else None
-        center_result = find_gauge_center(proc, prev_center=prev,
-                                          ema_alpha=float(config.get("center_ema", 0.3)),
-                                          use_clahe=False)
-        if center_result is None:
-            return None, "could not find gauge center"
-        cx, cy, radius = center_result
-        if center_tracker:
-            center_tracker.update(cx, cy, radius)
-
-    cy += int(config["center_offset_y"])
-
-    # Needle
-    if method == "radial":
-        angle_deg = find_needle_angle_legacy(
-            proc, cx, cy, radius,
-            inner_ratio=float(config["inner_ratio"]),
-            outer_ratio=float(config["outer_ratio"]),
-            blur_kernel=int(config["blur_kernel"]),
-            threshold_block=int(config["threshold_block"]),
-            threshold_c=int(config["threshold_c"]),
-        )
-    else:
-        result = find_needle_angle(
-            proc, cx, cy, radius,
-            inner_ratio=float(config["inner_ratio"]),
-            outer_ratio=float(config["outer_ratio"]),
-            blur_kernel=int(config["blur_kernel"]),
-            threshold_block=int(config["threshold_block"]),
-            threshold_c=int(config["threshold_c"]),
-            method=method,
-            background_ref=None,
-            min_angle=float(config["min_angle"]),
-            max_angle=float(config["max_angle"]),
-        )
-        if "error" in result:
-            return None, result["error"]
-        angle_deg = float(result["angle"])
-
-    if method != "radial" and angle_kalman:
-        angle_deg = angle_kalman.update(angle_deg)
-
-    # Upscale
-    inv = 1.0 / scale if scale != 1.0 else 1.0
-    cx_out = int(cx * inv)
-    cy_out = int(cy * inv)
-    radius_out = int(radius * inv)
-
-    value = angle_to_value(angle_deg, float(config["min_angle"]), float(config["max_angle"]),
-                           float(config["min_value"]), float(config["max_value"]))
-
-    annotated = draw_needle(img.copy(), cx_out, cy_out, radius_out, angle_deg,
-                            inner_ratio=float(config["inner_ratio"]),
-                            outer_ratio=float(config["outer_ratio"]),
-                            min_angle=float(config["min_angle"]),
-                            max_angle=float(config["max_angle"]))
-    _, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
-    annotated_b64 = base64.b64encode(buffer).decode("utf-8")
-
-    return {
-        "value": round(value, 2),
-        "angle": round(angle_deg, 2),
-        "center": {"x": cx_out, "y": cy_out, "radius": radius_out},
-        "annotated_image": annotated_b64,
-    }, None
-
-
 def push_to_server(payload, config):
     url = config.get("server_api_url", "http://localhost:8082/api/receive_reading.php")
     api_key = config.get("api_key", "")
@@ -182,16 +79,17 @@ def push_to_server(payload, config):
         return None, str(e)
 
 
-def do_reading(config, camera_id=0, value_filter=None, center_tracker=None, angle_kalman=None):
+def do_reading(config, camera_id=0, value_filter=None, detector=None):
     try:
         frame = capture_frame(camera_id)
     except RuntimeError as e:
         print(f"[{time.strftime('%H:%M:%S')}] Capture error: {e}")
         return
 
-    result, err = detect_gauge(frame, config, center_tracker=center_tracker, angle_kalman=angle_kalman)
-    if err or result is None:
-        print(f"[{time.strftime('%H:%M:%S')}] Detection error: {err}")
+    assert detector is not None, "GaugeDetector required"
+    result = detector.detect(frame)
+    if result.get("error"):
+        print(f"[{time.strftime('%H:%M:%S')}] Detection error: {result['error']}")
         return
 
     raw_value = result["value"]
@@ -199,11 +97,14 @@ def do_reading(config, camera_id=0, value_filter=None, center_tracker=None, angl
     if filtered != raw_value:
         print(f"[{time.strftime('%H:%M:%S')}] Spike rejected: {raw_value}→{filtered:.2f}")
 
+    # Produce annotated image for the push payload
+    finalized = detector.finalize_result(result, frame, 1.0, config)
+
     payload = {
         "point": config["point"],
         "value": round(filtered, 2),
-        "angle": result["angle"],
-        "annotated_image": result["annotated_image"],
+        "angle": finalized["angle"],
+        "annotated_image": finalized["annotated_image"],
     }
 
     resp, err = push_to_server(payload, config)
@@ -231,11 +132,9 @@ def main():
     print()
 
     vf = ValueFilter()
-    ct = CenterTracker(ema_alpha=float(config.get("center_ema", 0.3)))
-    ak = AngleKalman(R=float(config.get("angle_kalman_R", 0.1)),
-                     Q=float(config.get("angle_kalman_Q", 0.01)))
+    detector = GaugeDetector(config)
     while True:
-        do_reading(config, args.camera, value_filter=vf, center_tracker=ct, angle_kalman=ak)
+        do_reading(config, args.camera, value_filter=vf, detector=detector)
         if args.oneshot:
             break
         print(f"  Next reading in {interval}s...")
