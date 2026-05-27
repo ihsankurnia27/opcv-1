@@ -1035,7 +1035,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-13-no-call.txt
   ```
 
-- [ ] 14. Update tests for all new features
+- [x] 14. Update tests for all new features
 
   **What to do**:
   - Ensure all new code has TDD tests (RED phase was already done per task)

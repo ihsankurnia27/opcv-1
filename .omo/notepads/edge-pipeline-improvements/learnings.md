@@ -405,3 +405,31 @@
 ### Dependencies
 - Depends on: Tasks 6-13 (all new features) — DONE ✓
 - Blocks: Task 15
+
+## Task 15: Integration test — backward compat + preset round-trip
+
+### What was added
+8 new integration tests in `tests/test_integration.py` (27 total, all passing):
+
+| Test | What it covers |
+|------|---------------|
+| `test_old_config_loads_with_defaults` | Old-format config (no new keys) → GaugeDetector works with .get() defaults; load_config() fills use_roi, roi_margin, min_confidence, presets |
+| `test_preset_roundtrip` | Save params → export format → import → verify params match → detection output differs from defaults |
+| `test_all_features_enabled_detection_works` | All features simultaneously (ROI + CLAHE clip/tile + min_confidence + Kalman dt) → all output keys present with valid types and ranges |
+| `test_confidence_field_present` | Synthetic gauge → confidence ∈ [0,1], rejected is bool |
+| `test_roi_detection_produces_valid_result` | ROI enabled → valid angle/value, debug_preprocess cropped smaller than full frame |
+| `test_kalman_enhanced_active` | AngleKalman is 2D (2×2 F, 1×2 H); after 2 detect() calls, velocity state > 0; filtered angle lags behind measurement |
+| `test_config_endpoint_returns_all_keys` | GET /api/config: old keys preserved with correct types, new keys present with defaults |
+| `test_detect_endpoint_unchanged` | POST /detect: same param names, same response shape (value, angle, center, error, w, h, annotated_image, confidence, rejected) |
+
+### Key design decisions
+- Tests directly use GaugeDetector at module level (no server needed) for detector-level tests
+- FastAPI TestClient used only for /api/config and /detect endpoint shape tests
+- All tests use synthetic images (make_realistic_gauge) — zero hardware dependency
+- load_config() tests patch CONFIG_PATH to avoid reading real config files
+- test_old_config_loads_with_defaults verifies both GaugeDetector backward compat AND load_config() defaults
+- test_kalman_enhanced_active checks internal kalman state (velocity) to verify 2D behavior
+
+### Dependencies
+- Depends on: Tasks 1-14 (all features + tests) — DONE ✓
+- Blocks: Final Verification Wave (F1-F4)

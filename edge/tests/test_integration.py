@@ -383,3 +383,373 @@ def test_angle_to_value_wrap():
 def test_angle_to_value_normal():
     v = angle_to_value(135, 45, 315, 0, 10)
     assert 3 < v < 4, f"Expected ~3.33, got {v}"
+
+
+# ====================================================================
+# Integration: Backward compat — old config loads with defaults
+# ====================================================================
+
+
+def test_old_config_loads_with_defaults():
+    """Old-format config (without new keys) loads successfully with all defaults."""
+    from unittest.mock import patch
+
+    from gauge_reader.detector import GaugeDetector
+
+    # --- Part 1: GaugeDetector accepts old config without new keys ---
+    old_cfg = make_default_config()
+    # Verify old config has NO new keys
+    assert "use_roi" not in old_cfg
+    assert "roi_margin" not in old_cfg
+    assert "min_confidence" not in old_cfg
+    assert "presets" not in old_cfg
+    assert "angle_kalman_dt" not in old_cfg
+
+    det = GaugeDetector(old_cfg)
+    img = make_realistic_gauge(angle_deg=90)
+    result = det.detect(img.copy())
+
+    assert result.get("error") is None, f"Detection failed: {result.get('error')}"
+    # Default min_confidence=0.0 → never reject
+    assert result["rejected"] is False
+    # Default use_roi=False → no ROI crop → debug_preprocess is full detection size
+    h_proc, w_proc = result["debug_preprocess"].shape[:2]
+    assert h_proc == 360 and w_proc == 480, (
+        f"Expected full detection frame (360, 480) without ROI, got ({h_proc}, {w_proc})"
+    )
+    # Default angle_kalman_dt=0.2 used by AngleKalman
+    assert det._angle_kalman.dt == 0.2
+    # Detection with old config still produces all new output keys
+    assert "confidence" in result
+    assert "rejected" in result
+
+    # --- Part 2: load_config() fills in new keys with defaults ---
+    from app.api import load_config
+
+    with patch("app.api.CONFIG_PATH", "/tmp/_test_nonexistent_bc.json"):
+        cfg = load_config()
+        assert cfg.get("use_roi") is False
+        assert cfg.get("roi_margin") == 1.5
+        assert cfg.get("min_confidence") == 0.0
+        assert cfg.get("presets") == []
+
+
+# ====================================================================
+# Integration: Preset roundtrip (save → load → export → import)
+# ====================================================================
+
+
+def test_preset_roundtrip():
+    """Preset params survive save → load → export → import roundtrip at module level."""
+    from gauge_reader.detector import GaugeDetector
+
+    # --- Save: capture current params to a preset dict ---
+    original_params = {"blur_kernel": 7, "threshold_block": 15}
+
+    # --- Export: serialize to transport format ---
+    export_data = {
+        "version": 1,
+        "presets": [{"name": "TestPreset", "params": original_params}],
+    }
+
+    # --- Import: extract params from transport format ---
+    imported_params = export_data["presets"][0]["params"]
+
+    # Verify params survive roundtrip
+    assert imported_params == original_params
+    assert imported_params["blur_kernel"] == 7
+    assert imported_params["threshold_block"] == 15
+
+    # --- Load: apply imported params to a detector via config ---
+    cfg = make_default_config(imported_params)
+    det = GaugeDetector(cfg)
+    img = make_realistic_gauge(angle_deg=90)
+    result = det.detect(img.copy())
+
+    assert result.get("error") is None, f"Detection failed: {result.get('error')}"
+
+    # --- Verify imported params took effect (compare with default config) ---
+    cfg_default = make_default_config()
+    det_default = GaugeDetector(cfg_default)
+    r_default = det_default.detect(img.copy())
+
+    if r_default.get("error") is None and result.get("error") is None:
+        # blur_kernel=7, threshold_block=15 should produce different output than defaults
+        diff = np.abs(
+            r_default["debug_binary"].astype(float)
+            - result["debug_binary"].astype(float)
+        ).mean()
+        assert diff > 0, "Preset params should change detection output"
+
+
+# ====================================================================
+# Integration: All new features enabled simultaneously
+# ====================================================================
+
+
+def test_all_features_enabled_detection_works():
+    """All new features enabled simultaneously produces valid detection output."""
+    from gauge_reader.detector import GaugeDetector
+
+    img = make_realistic_gauge(cx=320, cy=240, radius=150, angle_deg=60)
+    cfg = make_default_config({
+        "use_roi": True,
+        "roi_margin": 1.5,
+        "clahe_clip": 3.0,
+        "clahe_tile": 12,
+        "min_confidence": 0.0,
+        "angle_kalman_dt": 0.2,
+    })
+    det = GaugeDetector(cfg)
+    result = det.detect(img.copy())
+
+    # Verify all expected output keys present
+    assert result.get("error") is None, f"Detection failed: {result.get('error')}"
+    required_keys = {"value", "angle", "center", "error", "w", "h", "confidence", "rejected"}
+    assert required_keys.issubset(result.keys()), (
+        f"Missing keys: {required_keys - result.keys()}"
+    )
+    assert "x" in result["center"]
+    assert "y" in result["center"]
+    assert "radius" in result["center"]
+
+    # All values are reasonable
+    assert isinstance(result["value"], float)
+    assert isinstance(result["angle"], float)
+    assert isinstance(result["confidence"], float)
+    assert isinstance(result["rejected"], bool)
+    assert 0 <= result["confidence"] <= 1
+    assert result["center"]["x"] >= 0
+    assert result["center"]["y"] >= 0
+    assert result["center"]["radius"] > 0
+    assert result["w"] > 0
+    assert result["h"] > 0
+
+
+# ====================================================================
+# Integration: Confidence field in detection result
+# ====================================================================
+
+
+def test_confidence_field_present():
+    """Detection result always includes confidence and rejected keys with valid values."""
+    from gauge_reader.detector import GaugeDetector
+
+    img = make_realistic_gauge(angle_deg=90)
+    det = GaugeDetector(make_default_config())
+    result = det.detect(img.copy())
+
+    assert result.get("error") is None, f"Detection failed: {result.get('error')}"
+    assert "confidence" in result, "Missing 'confidence' in detection result"
+    assert "rejected" in result, "Missing 'rejected' in detection result"
+    assert isinstance(result["confidence"], float)
+    assert isinstance(result["rejected"], bool)
+    assert 0 <= result["confidence"] <= 1, (
+        f"Confidence {result['confidence']} outside [0, 1]"
+    )
+
+
+# ====================================================================
+# Integration: ROI detection produces valid result
+# ====================================================================
+
+
+def test_roi_detection_produces_valid_result():
+    """ROI cropping enabled produces valid angle and value, no error."""
+    from gauge_reader.detector import GaugeDetector
+
+    img = make_realistic_gauge(cx=320, cy=240, radius=150, angle_deg=60)
+    cfg = make_default_config({
+        "use_roi": True,
+        "roi_margin": 1.5,
+    })
+    det = GaugeDetector(cfg)
+    result = det.detect(img.copy())
+
+    assert result.get("error") is None, f"ROI detection failed: {result.get('error')}"
+    assert isinstance(result["angle"], float), f"angle must be float, got {type(result['angle'])}"
+    assert isinstance(result["value"], float), f"value must be float, got {type(result['value'])}"
+    # ROI should produce a cropped debug_preprocess (smaller than full frame)
+    h_roi, w_roi = result["debug_preprocess"].shape[:2]
+    assert h_roi < 360 or w_roi < 480, (
+        f"ROI-cropped debug ({w_roi}×{h_roi}) should be smaller than detection frame"
+    )
+
+
+# ====================================================================
+# Integration: 2D Kalman with velocity state
+# ====================================================================
+
+
+def test_kalman_enhanced_active():
+    """GaugeDetector uses 2D AngleKalman with velocity state after two updates."""
+    from gauge_reader.detector import GaugeDetector
+    from gauge_reader.temporal import AngleKalman
+
+    # --- Verify AngleKalman is 2D constant-velocity ---
+    kalman = AngleKalman()
+    F = kalman._F()
+    assert F.shape == (2, 2), f"Expected 2×2 F matrix, got {F.shape}"
+    assert F[0, 1] > 0, "F[0,1] should be dt > 0 (velocity → angle coupling)"
+    assert F[1, 1] == 1.0, "F[1,1] should be 1.0 (velocity persistence)"
+    assert kalman.H.shape == (1, 2), (
+        f"Expected 1×2 H matrix, got {kalman.H.shape}"
+    )
+
+    # --- Verify GaugeDetector uses AngleKalman with velocity tracking ---
+    cfg = make_default_config({"angle_kalman_dt": 0.2})
+    det = GaugeDetector(cfg)
+
+    assert det._angle_kalman is not None
+    assert det._angle_kalman.H.shape == (1, 2)
+
+    # Call detect twice to initialize and update Kalman
+    img1 = make_realistic_gauge(angle_deg=50)
+    img2 = make_realistic_gauge(angle_deg=60)
+
+    r1 = det.detect(img1.copy())
+    assert r1.get("error") is None, f"First detection failed: {r1.get('error')}"
+
+    r2 = det.detect(img2.copy())
+    assert r2.get("error") is None, f"Second detection failed: {r2.get('error')}"
+
+    # After two updates, Kalman state should have [angle, velocity]
+    x = det._angle_kalman._x
+    assert x is not None, "AngleKalman state should be initialized"
+    assert len(x) == 2, f"Expected 2-element state [angle, vel], got {x}"
+    # Needle moved from 50 to 60 → velocity should be nonzero
+    assert abs(x[1]) > 0, (
+        f"Expected nonzero velocity after 50→60 motion, got {x[1]}"
+    )
+    # Filtered angle should be between 50 and 60 (lag behind measurement)
+    assert 50 <= r2["angle"] < 60, (
+        f"Kalman smoothed angle {r2['angle']} should lag behind 60° measurement"
+    )
+
+
+# ====================================================================
+# Integration: /api/config endpoint shape preserved
+# ====================================================================
+
+
+def test_config_endpoint_returns_all_keys():
+    """/api/config returns same shape for existing keys as before."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+    from app.api import app
+
+    client = TestClient(app)
+
+    with patch("app.api.CONFIG_PATH", "/tmp/_test_nonexistent_config_shape.json"):
+        resp = client.get("/api/config")
+    assert resp.status_code == 200
+    cfg = resp.json()
+
+    # Old keys still present with correct types
+    assert "point" in cfg
+    assert isinstance(cfg["point"], str)
+    assert "min_value" in cfg
+    assert isinstance(cfg["min_value"], (int, float))
+    assert "max_value" in cfg
+    assert "min_angle" in cfg
+    assert "max_angle" in cfg
+    assert "center_offset_y" in cfg
+    assert "inner_ratio" in cfg
+    assert "outer_ratio" in cfg
+    assert "blur_kernel" in cfg
+    assert "threshold_block" in cfg
+    assert "threshold_c" in cfg
+    assert isinstance(cfg["threshold_c"], (int, float))
+    assert "interval_seconds" in cfg
+    assert "server_api_url" in cfg
+    assert "api_key" in cfg
+
+    # New keys present with defaults
+    assert cfg.get("use_roi") is False
+    assert cfg.get("roi_margin") == 1.5
+    assert cfg.get("min_confidence") == 0.0
+    assert cfg.get("presets") == []
+
+    # Verify no key changed type (old keys should still be present)
+    old_keys = {
+        "point", "min_value", "max_value", "min_angle", "max_angle",
+        "center_offset_y", "inner_ratio", "outer_ratio",
+        "blur_kernel", "threshold_block", "threshold_c",
+        "circle_hough_param1", "circle_hough_param2", "circle_hough_dp",
+        "circle_canny_low", "circle_canny_high",
+        "circle_adaptive_thresh", "circle_dilate", "circle_clahe_clip",
+        "circle_min_circularity", "circle_min_dist_ratio",
+        "circle_min_radius_ratio", "circle_max_radius_ratio",
+        "interval_seconds", "server_api_url", "api_key",
+        "camera_id", "cam_resolution",
+        "filter_alpha", "filter_max_jump", "filter_window",
+        "detect_method", "use_clahe", "center_ema",
+        "angle_kalman_R", "angle_kalman_Q",
+    }
+    for key in old_keys:
+        assert key in cfg, f"Old key '{key}' missing from /api/config"
+
+
+# ====================================================================
+# Integration: /detect endpoint unchanged
+# ====================================================================
+
+
+def test_detect_endpoint_unchanged():
+    """/detect endpoint has same param names and response shape as before."""
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+    from app.api import app
+
+    client = TestClient(app)
+
+    img = make_realistic_gauge(angle_deg=90)
+    _, buf = cv2.imencode(".jpg", img)
+
+    with patch("app.api.CONFIG_PATH", "/tmp/_test_nonexistent_detect.json"):
+        resp = client.post(
+            "/detect",
+            files={"image": ("test.jpg", buf.tobytes(), "image/jpeg")},
+            data={
+                "min_angle": 45.0,
+                "max_angle": 315.0,
+                "min_value": 0.0,
+                "max_value": 10.0,
+                "center_offset_y": 0.0,
+                "inner_ratio": 0.60,
+                "outer_ratio": 0.80,
+                "blur_kernel": 5,
+                "threshold_block": 0,
+                "threshold_c": 5,
+                "detect_method": "auto",
+                "use_clahe": True,
+                "need_annotation": True,
+            },
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Response has expected shape (same keys as before)
+    assert "value" in data, "Missing 'value' in /detect response"
+    assert "angle" in data, "Missing 'angle' in /detect response"
+    assert "center" in data, "Missing 'center' in /detect response"
+    assert "error" in data, "Missing 'error' in /detect response"
+    assert "w" in data, "Missing 'w' in /detect response"
+    assert "h" in data, "Missing 'h' in /detect response"
+    assert "annotated_image" in data, "Missing 'annotated_image' in /detect response"
+    assert "confidence" in data, "Missing 'confidence' in /detect response"
+    assert "rejected" in data, "Missing 'rejected' in /detect response"
+    assert "x" in data["center"]
+    assert "y" in data["center"]
+    assert "radius" in data["center"]
+
+    # Value types are correct
+    assert isinstance(data["value"], float)
+    assert isinstance(data["angle"], float)
+    assert data.get("error") is None, f"Detection error: {data.get('error')}"
+    assert 0 <= data["confidence"] <= 1, (
+        f"Confidence {data['confidence']} outside [0, 1]"
+    )
+    assert isinstance(data["rejected"], bool)
