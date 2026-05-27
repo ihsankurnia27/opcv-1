@@ -64,6 +64,16 @@ def test_list_presets():
     assert data[1]["name"] == "P2"
 
 
+def test_get_presets_empty_list():
+    """GET /api/presets returns [] when presets key is an empty array."""
+    with patch("app.api.CONFIG_PATH", "/tmp/_test_p_empty_list2.json"):
+        with open("/tmp/_test_p_empty_list2.json", "w") as f:
+            json.dump({"presets": []}, f)
+        resp = client.get("/api/presets")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 def test_get_preset():
     with patch("app.api.CONFIG_PATH", "/tmp/_test_p_get.json"):
         with open("/tmp/_test_p_get.json", "w") as f:

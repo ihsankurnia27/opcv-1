@@ -113,3 +113,65 @@ def test_angle_kalman_dt_affects_response():
     total2 = sum(out2)
     assert abs(total1 - total2) > 0.01, \
         f"dt {dt_small} sum {total1:.2f} vs dt {dt_large} sum {total2:.2f}"
+
+
+# --- Edge cases ---
+
+
+def test_angle_kalman_large_jump_handling():
+    """Sudden large angle change (simulating occlusion recovery) handled gracefully."""
+    kf = AngleKalman(R=0.5, Q=0.05, dt=0.2)
+    # Converge at 90
+    for _ in range(10):
+        kf.update(90.0)
+    # Sudden jump to 270 (180° difference)
+    result = kf.update(270.0)
+    # Should move toward 270, not stay at 90
+    assert result > 100, f"Should move past 100 toward 270, got {result}"
+    # But still lag behind (not jump all the way)
+    assert result < 260, f"Should lag behind 270, got {result}"
+
+
+def test_angle_kalman_dt_zero():
+    """dt=0 should not cause NaN, division-by-zero, or crash."""
+    kf = AngleKalman(R=0.5, Q=0.05, dt=0.0)
+    kf.update(45.0)
+    result = kf.update(50.0)
+    assert isinstance(result, float)
+    assert not np.isnan(result), "dt=0 produced NaN"
+    assert 45.0 <= result <= 50.0, f"dt=0 output {result} outside expected range"
+
+
+def test_center_tracker_alpha_zero():
+    """ema_alpha=0 means never update from initial seed value."""
+    tracker = CenterTracker(ema_alpha=0.0)
+    tracker.update(100, 200, 150)
+    cx, cy, r = tracker.get()
+    assert (cx, cy, r) == (100.0, 200.0, 150.0)
+    # Second update with different value should NOT change (alpha=0)
+    tracker.update(999, 999, 999)
+    cx2, cy2, r2 = tracker.get()
+    assert cx2 == 100.0, f"Alpha=0 should freeze cx at 100, got {cx2}"
+    assert cy2 == 200.0, f"Alpha=0 should freeze cy at 200, got {cy2}"
+    assert r2 == 150.0, f"Alpha=0 should freeze r at 150, got {r2}"
+
+
+def test_center_tracker_alpha_one():
+    """ema_alpha=1 means instantly track new values (no smoothing)."""
+    tracker = CenterTracker(ema_alpha=1.0)
+    tracker.update(100, 200, 150)
+    tracker.update(999, 888, 777)
+    cx, cy, r = tracker.get()
+    assert cx == 999.0
+    assert cy == 888.0
+    assert r == 777.0
+
+
+def test_angle_kalman_reset():
+    """reset() should clear internal state so next update acts as initial."""
+    kf = AngleKalman(R=0.5, Q=0.05)
+    kf.update(45.0)
+    kf.update(50.0)
+    kf.reset()
+    result = kf.update(180.0)
+    assert result == 180.0, f"After reset, first update should match exactly, got {result}"

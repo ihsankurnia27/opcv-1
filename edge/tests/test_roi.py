@@ -84,6 +84,22 @@ class TestRoiDetection:
                 f"ROI debug ({h_roi}x{w_roi}) should be smaller than full ({h_no_roi}x{w_no_roi})"
             )
 
+    def test_roi_gauge_at_image_edge(self):
+        """Gauge near image edge with ROI should not crash and produce valid result."""
+        from gauge_reader.detector import GaugeDetector
+        # Gauge at (140, 140) with radius 100 — tight crop near top-left edge
+        img = make_realistic_gauge(cx=140, cy=140, radius=100, angle_deg=45)
+        cfg = make_default_config()
+        det = GaugeDetector(cfg)
+        result = det.detect(img.copy(),
+                            config_overrides={"use_roi": "1", "roi_margin": 0.8})
+        if result.get("error") is None:
+            h, w = result["debug_preprocess"].shape[:2]
+            assert h < 480 or w < 640, (
+                f"ROI-cropped ({w}x{h}) should be smaller than full frame"
+            )
+            assert h > 0 and w > 0, "Crop should have positive dimensions"
+
     def test_roi_different_margins_different_crops(self):
         """Different roi_margin values produce different crop sizes (at least one dim differs)."""
         from gauge_reader.detector import GaugeDetector

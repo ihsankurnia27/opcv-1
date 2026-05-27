@@ -237,3 +237,55 @@ class TestGaugeDetectorFinalize:
         assert "value" in finalized
         assert "angle" in finalized
         assert "center" in finalized
+
+
+class TestDetectorEdgeCases:
+    """Edge cases: None input, empty frames, extreme configs."""
+
+    def test_detect_none_input_returns_error(self):
+        """Passing None as frame returns error dict, not crash."""
+        from gauge_reader.detector import GaugeDetector
+        det = GaugeDetector(make_default_config())
+        result = det.detect(None)
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert result["error"] is not None
+
+    def test_detect_zero_size_frame_handled(self):
+        """Zero-size image returns error dict or empty result."""
+        from gauge_reader.detector import GaugeDetector
+        img = np.zeros((0, 0, 3), dtype=np.uint8)
+        cfg = make_default_config()
+        det = GaugeDetector(cfg)
+        result = det.detect(img)
+        assert isinstance(result, dict)
+        assert "error" in result or "value" in result
+
+    def test_detect_config_extreme_values_no_crash(self):
+        """Extreme config values (max blur, max threshold) should not crash."""
+        from gauge_reader.detector import GaugeDetector
+        img = make_realistic_gauge(angle_deg=90)
+        cfg = make_default_config({
+            "blur_kernel": 31,
+            "threshold_block": 99,
+            "circle_hough_param1": 999,
+            "circle_hough_param2": 999,
+            "min_confidence": 0.0,
+        })
+        det = GaugeDetector(cfg)
+        result = det.detect(img)
+        assert isinstance(result, dict)
+
+    def test_detect_repeated_same_frame_stable_output(self):
+        """Same frame detected 3 times with same instance should stabilize."""
+        from gauge_reader.detector import GaugeDetector
+        img = make_realistic_gauge(angle_deg=60)
+        cfg = make_default_config()
+        det = GaugeDetector(cfg)
+        results = [det.detect(img.copy()) for _ in range(3)]
+        for r in results:
+            assert r.get("error") is None
+        angles = [r["angle"] for r in results if r.get("error") is None]
+        if len(angles) >= 3:
+            variance = np.var(angles)
+            assert variance < 5.0, f"Angle variance {variance:.2f} too high: {angles}"

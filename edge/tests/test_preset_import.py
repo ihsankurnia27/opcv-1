@@ -103,3 +103,26 @@ def test_import_empty_presets():
         })
     assert resp.status_code == 400
     assert "non-empty" in resp.json()["detail"]
+
+
+def test_import_missing_presets_key():
+    """Missing 'presets' key entirely should return 400."""
+    with patch("app.api.CONFIG_PATH", "/tmp/_test_imp_toplev.json"):
+        with open("/tmp/_test_imp_toplev.json", "w") as f:
+            f.write(PRESET_CONFIG)
+        resp = client.post("/api/presets/import", json={
+            "version": 1,
+        })
+    assert resp.status_code == 400
+
+
+def test_import_presets_not_an_array():
+    """presets key that is not an array should return 400."""
+    with patch("app.api.CONFIG_PATH", "/tmp/_test_imp_wrong_type.json"):
+        with open("/tmp/_test_imp_wrong_type.json", "w") as f:
+            f.write(PRESET_CONFIG)
+        resp = client.post("/api/presets/import", json={
+            "version": 1,
+            "presets": "not-an-array",
+        })
+    assert resp.status_code == 400

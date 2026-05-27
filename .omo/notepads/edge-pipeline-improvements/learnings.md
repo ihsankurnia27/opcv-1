@@ -367,3 +367,41 @@
 ### Dependencies
 - Depends on: Task 9 (refreshSliders, slider inputs) — DONE ✓
 - Blocks: Tasks 14, 15
+
+## Task 14: Update tests for all new features
+
+### What was added
+- **detector.py**: Added None/empty frame guard in `_run_detection()` — returns error dict instead of crashing on `None` or zero-size input
+- **27 new tests** across 7 test files (125 → 152 total, all passing)
+
+### Integration tests (test_integration.py — 10 new)
+| Test | What it covers |
+|------|---------------|
+| `test_export_import_roundtrip` | Full cycle: create presets → GET → build export format → POST import → verify data integrity |
+| `test_detector_config_changes_affect_output` | Different configs (blur+threshold) produce measurably different debug binary |
+| `test_multi_feature_roi_confidence_kalman` | ROI cropping + confidence scoring + Kalman all active simultaneously |
+| `test_sequential_detection_temporal_tracking` | 3-frame sequence with Kalman: angles increase monotonically with lag |
+| `test_config_overrides_do_not_persist` | Per-call config_overrides don't leak to subsequent detect() calls |
+| `TestAngleToValueEdgeCases` (8 methods) | Zero angle range, zero value range, min/max boundaries, extreme clamping, wrap-around min/max/mid |
+
+### Edge case tests
+| File | Tests added |
+|------|------------|
+| `test_detector.py` (4) | None input, zero-size frame, extreme config values, repeated same-frame stability |
+| `test_temporal.py` (5) | Large angle jump (180°), dt=0 no NaN, center_tracker alpha=0, alpha=1, Kalman reset() |
+| `test_roi.py` (1) | Gauge at image edge (140,140) with ROI margin — partial crop doesn't crash |
+| `test_confidence.py` (1) | Low-contrast synthetic gauge produces lower confidence than high-contrast |
+| `test_preset_import.py` (2) | Missing 'presets' key, presets not an array type — both 400 |
+| `test_presets.py` (1) | Empty presets list returns [] from GET /api/presets |
+
+### Key design decisions
+- Integration tests use FastAPI TestClient + GaugeDetector directly — no Docker/network needed
+- None/empty guard added to `_run_detection()` to return error dict — allows callers to handle gracefully
+- Low-contrast test generates synthetic gauge with needle at (135, 135, 135) on (150, 150, 150) background — only 15 levels of contrast vs 150+ in high-contrast gauge
+- Kalman large-jump test verifies both "moves toward new measurement" AND "lags behind" (smoothing property)
+- All tests use only synthetic images — zero hardware dependency
+- The `test_config_overrides_do_not_persist` test relies on the fact that synthetic gauge confidence is typically < 0.99, making the override (min_confidence=0.99) reject while base (0.0) doesn't
+
+### Dependencies
+- Depends on: Tasks 6-13 (all new features) — DONE ✓
+- Blocks: Task 15

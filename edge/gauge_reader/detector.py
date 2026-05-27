@@ -153,6 +153,10 @@ class GaugeDetector:
 
     def _run_detection(self, frame, cfg):
         """Internal: detect gauge with the given (merged) config."""
+        if frame is None:
+            return {"error": "no frame provided"}
+        if frame.size == 0:
+            return {"error": "empty frame"}
         method = cfg.get("detect_method", "auto")
         use_clahe = cfg.get("use_clahe", True)
 

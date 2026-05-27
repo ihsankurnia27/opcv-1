@@ -906,7 +906,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-11-dry-run.txt
   ```
 
-- [ ] 12. Export/import presets as JSON
+- [x] 12. Export/import presets as JSON
 
   **What to do**:
   - **Export**: Add "Export" button in Presets card → calls `GET /api/presets`, formats as JSON, triggers browser download as `edge-presets-{date}.json`
@@ -973,7 +973,7 @@ Max Concurrent: 6 (Wave 2)
     Evidence: .omo/evidence/task-12-import.png
   ```
 
-- [ ] 13. Debounced live tuning slider -> stream-detect-config
+- [x] 13. Debounced live tuning slider -> stream-detect-config (covered by Task 9)
 
   **What to do**:
   - Create a `debounce(fn, delay)` helper in the JS section of index.html

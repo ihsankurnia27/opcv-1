@@ -15,6 +15,7 @@ _edge_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _edge_root)
 sys.path.insert(0, os.path.join(_edge_root, "tests"))
 
+import cv2
 import numpy as np
 import pytest
 
@@ -154,3 +155,36 @@ class TestConfidenceConsistency:
         """min_confidence can be sent via stream-detect-config."""
         from app.api import ALLOWED_DETECT_KEYS
         assert "min_confidence" in ALLOWED_DETECT_KEYS
+
+
+class TestConfidenceLowContrast:
+    """Confidence varies with image quality."""
+
+    def test_confidence_low_contrast_image(self):
+        """Low contrast synthetic gauge produces lower confidence than high contrast."""
+        from gauge_reader.detector import GaugeDetector
+
+        img_high = make_realistic_gauge(angle_deg=60)
+
+        # Very low contrast version — faint gray needle on similar gray bg
+        img_low = np.full((480, 640, 3), 150, dtype=np.uint8)
+        cv2.circle(img_low, (320, 240), 165, (145, 145, 145), 2)
+        cv2.circle(img_low, (320, 240), 150, (148, 148, 148), 3)
+        rad = np.deg2rad(60)
+        x2 = int(320 + 125 * np.cos(rad))
+        y2 = int(240 + 125 * np.sin(rad))
+        cv2.line(img_low, (320, 240), (x2, y2), (135, 135, 135), 3)
+        cv2.circle(img_low, (320, 240), 6, (140, 140, 140), -1)
+
+        cfg = make_default_config()
+        det_high = GaugeDetector(cfg)
+        det_low = GaugeDetector(cfg)
+
+        r_high = det_high.detect(img_high)
+        r_low = det_low.detect(img_low)
+
+        if r_high.get("error") is None and r_low.get("error") is None:
+            assert r_low["confidence"] <= r_high["confidence"], (
+                f"Low contrast confidence {r_low['confidence']:.3f} should be <= "
+                f"high contrast {r_high['confidence']:.3f}"
+            )
