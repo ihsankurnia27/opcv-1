@@ -670,6 +670,17 @@ def one_shot(
     return _finalize_detect_result(result, full, 1.0, cfg)
 
 
+@app.get("/api/debug-frame")
+def debug_frame():
+    """Debug: save current frame buffer to /tmp for analysis."""
+    for cam_id, buf in _frame_buffer.items():
+        f = buf["frame"]
+        path = f"/tmp/debug_frame_cam{cam_id}.jpg"
+        cv2.imwrite(path, f, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        return {"saved": path, "shape": list(f.shape), "mean": float(f.mean()), "age": time.time() - buf["ts"]}
+    return {"error": "no frame buffer"}
+
+
 # --- Auto-calibrate ---
 
 @app.post("/api/auto-calibrate")
