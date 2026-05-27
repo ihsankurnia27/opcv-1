@@ -1,4 +1,4 @@
-"""Temporal filtering: center position EMA + 1D Kalman angle filter."""
+"""Temporal filtering: center position EMA + 2D Kalman angle filter with unwrapping."""
 
 import numpy as np
 
@@ -36,37 +36,83 @@ class CenterTracker:
 
 
 class AngleKalman:
-    """1D Kalman filter (constant position model) for needle angle smoothing.
+    """2D Kalman filter (constant velocity model) for needle angle smoothing.
 
-    State: [angle]
-    Predict: x = x (needle assumed stationary between frames)
-    Update:  x = x + K * (measurement - x)
+    State: [angle, angular_velocity]
+      angle  = angle + dt * angular_velocity   (constant velocity transition)
+      vel    = vel                              (unchanged)
+
+    Measurement: angle only (H = [[1, 0]])
+
+    Features cumulative angle unwrapping: internal angle is unbounded,
+    output is converted to [0, 360) via modulo.  This means 355 -> 5
+    produces a small +10deg correction instead of a large -350deg jump.
     """
 
-    def __init__(self, R=0.1, Q=0.01):
-        self.R = R  # measurement noise
-        self.Q = Q  # process noise
-        self._x = None  # state estimate
-        self._P = None  # error covariance
+    def __init__(self, R=0.5, Q=0.05, dt=0.2, Q_vel=0.01):
+        self.R = np.array([[R]])       # measurement noise (1x1)
+        self.Q_angle = Q               # process noise for angle
+        self.Q_vel = Q_vel             # process noise for angular velocity
+        self.dt = dt                   # time step (seconds)
+        self.H = np.array([[1.0, 0.0]])  # measurement matrix (1x2)
+        self._x = None                 # state [angle, vel] (unwrapped)
+        self._P = None                 # error covariance (2x2)
+
+    def _F(self):
+        return np.array([[1.0, self.dt],
+                         [0.0, 1.0]])
+
+    def _Q(self):
+        return np.array([[self.Q_angle, 0.0],
+                         [0.0, self.Q_vel]])
+
+    @staticmethod
+    def _unwrap_diff(raw_diff):
+        """Unwrap an angular difference to [-180, 180)."""
+        if raw_diff > 180.0:
+            raw_diff -= 360.0
+        elif raw_diff < -180.0:
+            raw_diff += 360.0
+        return raw_diff
 
     def update(self, measurement):
         measurement = float(measurement)
+
         if self._x is None:
-            self._x = measurement
-            self._P = 1.0
+            self._x = np.array([measurement, 0.0])
+            self._P = np.eye(2)
             return measurement
 
-        # Predict
-        x_pred = self._x
-        P_pred = self._P + self.Q
+        F = self._F()
+        x_pred = F @ self._x
+        P_pred = F @ self._P @ F.T + self._Q()
 
-        # Update
-        K = P_pred / (P_pred + self.R)
-        self._x = x_pred + K * (measurement - x_pred)
-        self._P = (1 - K) * P_pred
+        predicted_angle_mod = x_pred[0] % 360.0
+        raw_diff = measurement - predicted_angle_mod
+        y = np.array([self._unwrap_diff(raw_diff)])
 
-        return float(self._x)
+        S = self.H @ P_pred @ self.H.T + self.R
+        K = P_pred @ self.H.T @ np.linalg.inv(S)
+        self._x = x_pred + (K @ y).flatten()
+        self._P = (np.eye(2) - K @ self.H) @ P_pred
+
+        return float(self._x[0] % 360.0)
 
     def reset(self):
         self._x = None
         self._P = None
+
+    def set_measurement_noise(self, R):
+        """Update measurement noise covariance (scalar → 1x1 matrix)."""
+        self.R = np.array([[R]])
+
+    def set_process_noise(self, Q_angle=None, Q_vel=None):
+        """Update process noise covariance components (each is a scalar)."""
+        if Q_angle is not None:
+            self.Q_angle = Q_angle
+        if Q_vel is not None:
+            self.Q_vel = Q_vel
+
+    def set_dt(self, dt):
+        """Update time step — F matrix is rebuilt lazily on next predict."""
+        self.dt = dt

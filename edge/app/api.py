@@ -6,6 +6,8 @@ import re
 import sys
 import threading
 import time
+import uuid
+from datetime import datetime
 import urllib.error
 import urllib.request
 from contextlib import asynccontextmanager
@@ -19,13 +21,11 @@ from fastapi.staticfiles import StaticFiles
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from gauge_reader import angle_to_value
-from gauge_reader.find_gauge_center import find_gauge_center, find_gauge_center_legacy
-from gauge_reader.find_needle_radial import find_needle_angle as find_needle_angle_legacy, draw_needle, detect_scale_range, compute_variance_profile, learn_gap_params
-from gauge_reader.find_needle import find_needle_angle
-from gauge_reader.preprocess import preprocess
+from gauge_reader.find_gauge_center import find_gauge_center
+from gauge_reader.find_needle_radial import draw_needle, detect_scale_range, compute_variance_profile, learn_gap_params
 from gauge_reader.temporal import CenterTracker, AngleKalman
 from gauge_reader.value_filter import ValueFilter
+from gauge_reader.detector import GaugeDetector
 
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/app/config.json")
 
@@ -100,6 +100,7 @@ def load_config():
     defaults.setdefault("cam_gain", -1)
     defaults.setdefault("cam_auto_exposure", True)
     defaults.setdefault("cam_exposure_absolute", -1)
+    defaults.setdefault("presets", [])
     return defaults
 
 
@@ -121,6 +122,21 @@ _bg_reader = None
 _bg_reader_lock = threading.Lock()
 _bg_stop = threading.Event()
 
+# Keys allowed for runtime detection config overrides (stream-detect-config + presets)
+ALLOWED_DETECT_KEYS = {
+    "min_value", "max_value", "min_angle", "max_angle",
+    "center_offset_y", "inner_ratio", "outer_ratio",
+    "circle_hough_param1", "circle_hough_param2", "circle_hough_dp",
+    "circle_canny_low", "circle_canny_high",
+    "circle_adaptive_thresh", "circle_dilate", "circle_clahe_clip",
+    "circle_min_circularity", "circle_min_dist_ratio",
+    "circle_min_radius_ratio", "circle_max_radius_ratio",
+    "blur_kernel", "threshold_block", "threshold_c",
+    "filter_alpha", "filter_max_jump", "filter_window",
+    "detect_method", "use_clahe", "center_ema",
+    "angle_kalman_R", "angle_kalman_Q", "angle_kalman_dt",
+}
+
 _detect_config = {}
 _detect_config_lock = threading.Lock()
 _stream_jpeg = {}          # mode -> ndarray (raw frames)
@@ -134,6 +150,26 @@ _center_tracker_lock = threading.Lock()
 _angle_kalman = AngleKalman()
 _angle_kalman_lock = threading.Lock()
 
+_gauge_detector = None
+_gauge_detector_lock = threading.Lock()
+
+
+def _get_gauge_detector():
+    """Lazy-init GaugeDetector, sharing temporal state."""
+    global _gauge_detector
+    if _gauge_detector is not None:
+        return _gauge_detector
+    with _gauge_detector_lock:
+        if _gauge_detector is None:
+            _gauge_detector = GaugeDetector(
+                load_config(),
+                center_tracker=_center_tracker,
+                angle_kalman=_angle_kalman,
+                center_tracker_lock=_center_tracker_lock,
+                angle_kalman_lock=_angle_kalman_lock,
+            )
+    return _gauge_detector
+
 def _reinit_filter(cfg):
     with _value_filter_lock:
         _value_filter.update_params(
@@ -146,8 +182,9 @@ def _reinit_temporal(cfg):
     with _center_tracker_lock:
         _center_tracker.alpha = float(cfg.get("center_ema", 0.3))
     with _angle_kalman_lock:
-        _angle_kalman.R = float(cfg.get("angle_kalman_R", 0.1))
-        _angle_kalman.Q = float(cfg.get("angle_kalman_Q", 0.01))
+        _angle_kalman.set_measurement_noise(float(cfg.get("angle_kalman_R", 0.1)))
+        _angle_kalman.set_process_noise(Q_angle=float(cfg.get("angle_kalman_Q", 0.01)))
+        _angle_kalman.set_dt(float(cfg.get("angle_kalman_dt", 0.2)))
 
 _DETECT_MAX_W = 640
 _DETECT_USE_W = 480  # internal detection resolution for speed
@@ -424,20 +461,9 @@ def stream_video(camera_id: int = Query(0), w: int = Query(0), h: int = Query(0)
 
 @app.post("/api/stream-detect-config")
 def set_stream_detect_config(body: dict):
-    allowed = {"min_value", "max_value", "min_angle", "max_angle",
-               "center_offset_y", "inner_ratio", "outer_ratio",
-               "circle_hough_param1", "circle_hough_param2", "circle_hough_dp",
-               "circle_canny_low", "circle_canny_high",
-               "circle_adaptive_thresh", "circle_dilate", "circle_clahe_clip",
-               "circle_min_circularity", "circle_min_dist_ratio",
-               "circle_min_radius_ratio", "circle_max_radius_ratio",
-               "blur_kernel", "threshold_block", "threshold_c",
-               "filter_alpha", "filter_max_jump", "filter_window",
-               "detect_method", "use_clahe", "center_ema",
-               "angle_kalman_R", "angle_kalman_Q"}
     with _detect_config_lock:
         _detect_config.clear()
-        _detect_config.update((k, v) for k, v in body.items() if k in allowed)
+        _detect_config.update((k, v) for k, v in body.items() if k in ALLOWED_DETECT_KEYS)
     # Reinit filter from detect config (falls back to saved config)
     merged = load_config()
     merged.update(_detect_config)
@@ -471,159 +497,8 @@ def _resize_for_detect(img):
 
 
 def _run_detection(frame, cfg):
-    """Detect gauge: v2 pipeline with legacy fallback via detect_method config."""
-    method = cfg.get("detect_method", "auto")
-    use_clahe = cfg.get("use_clahe", True)
-
-    h_orig, w_orig = frame.shape[:2]
-    if max(w_orig, h_orig) > _DETECT_USE_W:
-        scale = _DETECT_USE_W / max(w_orig, h_orig)
-        small = cv2.resize(frame, (int(w_orig * scale), int(h_orig * scale)),
-                           interpolation=cv2.INTER_AREA)
-    else:
-        scale = 1.0
-        small = frame
-
-    # Preprocess
-    if method != "radial":
-        proc = preprocess(small, clahe=use_clahe, denoise=True)
-    else:
-        proc = small
-        if use_clahe:
-            gray_proc = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray_proc)
-            proc = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
-
-    debug_proc = proc.copy()
-
-    # Center detection
-    if method == "radial":
-        center_result = find_gauge_center_legacy(
-            proc,
-            circle_hough_dp=float(cfg.get("circle_hough_dp", 1)),
-            circle_hough_param1=float(cfg.get("circle_hough_param1", 100)),
-            circle_hough_param2=float(cfg.get("circle_hough_param2", 50)),
-            circle_min_radius_ratio=float(cfg.get("circle_min_radius_ratio", 0.05)),
-            circle_max_radius_ratio=float(cfg.get("circle_max_radius_ratio", 0.45)),
-            circle_min_dist_ratio=float(cfg.get("circle_min_dist_ratio", 0.3)),
-        )
-        if center_result is None:
-            return {"error": "could not find gauge center"}
-        cx, cy, radius = center_result
-    else:
-        with _center_tracker_lock:
-            prev = _center_tracker.get() if _center_tracker.initialized else None
-        center_result = find_gauge_center(proc, prev_center=prev,
-                                          ema_alpha=float(cfg.get("center_ema", 0.3)),
-                                          use_clahe=False,
-                                          circle_hough_param1=float(cfg.get("circle_hough_param1", 100)),
-                                          circle_hough_param2=float(cfg.get("circle_hough_param2", 50)),
-                                          circle_hough_dp=float(cfg.get("circle_hough_dp", 1.2)),
-                                          circle_canny_low=int(cfg.get("circle_canny_low", 50)),
-                                          circle_canny_high=int(cfg.get("circle_canny_high", 150)),
-                                          circle_adaptive_thresh=bool(cfg.get("circle_adaptive_thresh", False)),
-                                          circle_dilate=int(cfg.get("circle_dilate", 0)),
-                                          circle_clahe_clip=float(cfg.get("circle_clahe_clip", 2.0)),
-                                          circle_min_circularity=float(cfg.get("circle_min_circularity", 0.7)),
-                                          circle_min_dist_ratio=float(cfg.get("circle_min_dist_ratio", 0.3)),
-                                          circle_min_radius_ratio=float(cfg.get("circle_min_radius_ratio", 0.05)),
-                                          circle_max_radius_ratio=float(cfg.get("circle_max_radius_ratio", 0.45)))
-        if center_result is None:
-            return {"error": "could not find gauge center"}
-        cx, cy, radius = center_result
-        with _center_tracker_lock:
-            _center_tracker.update(cx, cy, radius)
-
-    cy_adjusted = cy + int(cfg["center_offset_y"])
-
-    # Needle detection
-    debug_binary = None
-    if method == "radial":
-        angle_deg = find_needle_angle_legacy(
-            proc, cx, cy_adjusted, radius,
-            inner_ratio=float(cfg["inner_ratio"]),
-            outer_ratio=float(cfg["outer_ratio"]),
-            blur_kernel=int(cfg["blur_kernel"]),
-            threshold_block=int(cfg["threshold_block"]),
-            threshold_c=int(cfg["threshold_c"]),
-        )
-    else:
-        angle_result = find_needle_angle(
-            proc, cx, cy_adjusted, radius,
-            inner_ratio=float(cfg["inner_ratio"]),
-            outer_ratio=float(cfg["outer_ratio"]),
-            blur_kernel=int(cfg["blur_kernel"]),
-            threshold_block=int(cfg["threshold_block"]),
-            threshold_c=int(cfg["threshold_c"]),
-            method=method,
-            background_ref=None,
-            min_angle=float(cfg["min_angle"]),
-            max_angle=float(cfg["max_angle"]),
-        )
-        if "error" in angle_result:
-            return angle_result
-        angle_deg = float(angle_result["angle"])
-
-    # Temporal angle filter
-    if method != "radial":
-        with _angle_kalman_lock:
-            angle_deg = _angle_kalman.update(angle_deg)
-
-    # Upscale coords
-    inv = 1.0 / scale if scale != 1.0 else 1.0
-    cx_out = int(cx * inv)
-    cy_out = int(cy_adjusted * inv)
-    radius_out = int(radius * inv)
-
-    # Debug images for stream — annotate BEFORE upscaling coords
-    gray = cv2.cvtColor(proc, cv2.COLOR_BGR2GRAY)
-    if int(cfg["blur_kernel"]) > 0:
-        k = int(cfg["blur_kernel"])
-        k = k if k % 2 == 1 else k + 1
-        gray = cv2.GaussianBlur(gray, (k, k), 0)
-
-    if int(cfg["threshold_block"]) > 0:
-        b = int(cfg["threshold_block"])
-        b = b if b % 2 == 1 else b + 1
-        debug_binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                                             cv2.THRESH_BINARY, b, int(cfg["threshold_c"]))
-    else:
-        debug_binary = gray
-
-    # Convert debug_proc to grayscale (match what detection sees)
-    if debug_proc is not None:
-        debug_proc = cv2.cvtColor(debug_proc, cv2.COLOR_BGR2GRAY)
-
-    # Annotate debug images at detection resolution (small-res coords)
-    ann_proc = draw_needle(cv2.cvtColor(debug_proc, cv2.COLOR_GRAY2BGR),
-                           cx, cy_adjusted, radius, angle_deg,
-                           inner_ratio=float(cfg["inner_ratio"]),
-                           outer_ratio=float(cfg["outer_ratio"]),
-                           min_angle=float(cfg["min_angle"]),
-                           max_angle=float(cfg["max_angle"]))
-    ann_binary = draw_needle(cv2.cvtColor(debug_binary, cv2.COLOR_GRAY2BGR),
-                             cx, cy_adjusted, radius, angle_deg,
-                             inner_ratio=float(cfg["inner_ratio"]),
-                             outer_ratio=float(cfg["outer_ratio"]),
-                             min_angle=float(cfg["min_angle"]),
-                             max_angle=float(cfg["max_angle"]))
-
-    min_a, max_a = float(cfg["min_angle"]), float(cfg["max_angle"])
-    min_v, max_v = float(cfg["min_value"]), float(cfg["max_value"])
-    value = angle_to_value(angle_deg, min_a, max_a, min_v, max_v)
-
-    return {
-        "value": round(value, 2),
-        "angle": round(angle_deg, 2),
-        "center": {"x": cx_out, "y": cy_out, "radius": radius_out},
-        "error": None,
-        "w": w_orig, "h": h_orig,
-        "debug_preprocess": debug_proc,
-        "debug_binary": debug_binary,
-        "debug_preprocess_ann": ann_proc,
-        "debug_binary_ann": ann_binary
-    }
+    """Detect gauge — backward-compat wrapper.  Delegates to GaugeDetector."""
+    return _get_gauge_detector()._run_detection(frame, cfg)
 
 
 def _finalize_detect_result(result, full_img, upscale, cfg, need_annotation=True):
@@ -822,7 +697,7 @@ def update_config(body: dict):
         "interval_seconds", "server_api_url", "api_key",
         "filter_alpha", "filter_max_jump", "filter_window",
         "detect_method", "use_clahe", "use_difference_ref",
-        "overlay_fps", "center_ema", "angle_kalman_R", "angle_kalman_Q",
+        "overlay_fps", "center_ema", "angle_kalman_R", "angle_kalman_Q", "angle_kalman_dt",
         "cam_brightness", "cam_contrast", "cam_gain",
         "cam_auto_exposure", "cam_exposure_absolute",
     }
@@ -833,6 +708,100 @@ def update_config(body: dict):
     _reinit_filter(cfg)
     _reinit_temporal(cfg)
     return {"status": "ok", "config": cfg}
+
+
+# --- Presets CRUD ---
+
+def _find_preset(presets, pid):
+    for i, p in enumerate(presets):
+        if p.get("id") == pid:
+            return i, p
+    return None, None
+
+
+@app.get("/api/presets")
+def list_presets():
+    cfg = load_config()
+    return cfg.get("presets", [])
+
+
+@app.post("/api/presets", status_code=201)
+def create_preset(body: dict):
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(400, "name is required")
+    cfg = load_config()
+    presets = cfg.setdefault("presets", [])
+    params = body.get("params", {})
+    for p in presets:
+        if p.get("name") == name:
+            p["params"] = params
+            p["id"] = uuid.uuid4().hex[:12]
+            p["created"] = datetime.now().isoformat()
+            save_config(cfg)
+            return p
+    preset = {
+        "id": uuid.uuid4().hex[:12],
+        "name": name,
+        "params": params,
+        "created": datetime.now().isoformat(),
+    }
+    presets.append(preset)
+    save_config(cfg)
+    return preset
+
+
+@app.get("/api/presets/{pid}")
+def get_preset(pid: str):
+    cfg = load_config()
+    _, p = _find_preset(cfg.get("presets", []), pid)
+    if p is None:
+        raise HTTPException(404, "preset not found")
+    return p
+
+
+@app.put("/api/presets/{pid}")
+def update_preset(pid: str, body: dict):
+    cfg = load_config()
+    presets = cfg.get("presets", [])
+    i, p = _find_preset(presets, pid)
+    if p is None:
+        raise HTTPException(404, "preset not found")
+    if "name" in body and body["name"].strip():
+        p["name"] = body["name"].strip()
+    if "params" in body:
+        p["params"] = body["params"]
+    presets[i] = p
+    save_config(cfg)
+    return p
+
+
+@app.delete("/api/presets/{pid}", status_code=204)
+def delete_preset(pid: str):
+    cfg = load_config()
+    presets = cfg.get("presets", [])
+    i, p = _find_preset(presets, pid)
+    if p is None:
+        raise HTTPException(404, "preset not found")
+    presets.pop(i)
+    save_config(cfg)
+
+
+@app.post("/api/presets/{pid}/apply")
+def apply_preset(pid: str):
+    cfg = load_config()
+    _, p = _find_preset(cfg.get("presets", []), pid)
+    if p is None:
+        raise HTTPException(404, "preset not found")
+    with _detect_config_lock:
+        for k, v in p.get("params", {}).items():
+            if k in ALLOWED_DETECT_KEYS:
+                _detect_config[k] = v
+    merged = load_config()
+    merged.update(_detect_config)
+    _reinit_filter(merged)
+    _reinit_temporal(merged)
+    return {"ok": True}
 
 
 @app.get("/api/points")

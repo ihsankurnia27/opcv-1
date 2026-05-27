@@ -927,6 +927,10 @@ input[type="password"] { letter-spacing: .2em; }
         </div>
       </div>
       <div class="field-row three">
+        <div class="field-group"><label title="CLAHE clip limit — higher = more contrast enhancement.">CLAHE Clip</label><input id="clahe_clip" type="range" min="0.5" max="10" step="0.5" value="2.0"></div>
+        <div class="field-group"><label title="CLAHE tile grid size — larger = more local adaptation.">CLAHE Tile</label><input id="clahe_tile" type="range" min="2" max="16" step="2" value="8"></div>
+      </div>
+      <div class="field-row three">
         <div class="field-group"><label title="Kernel size for Gaussian blur before needle thresholding (must be odd).">Blur Kernel</label><input id="blur_kernel" type="number" step="2" min="1" max="31" value="5"></div>
         <div class="field-group"><label title="Block size for adaptive thresholding in needle detection.">Threshold Block</label><input id="threshold_block" type="number" step="2" min="0" max="99" value="0"></div>
         <div class="field-group"><label title="Constant subtracted from mean in adaptive thresholding.">Threshold C</label><input id="threshold_c" type="number" min="0" max="20" value="5"></div>
@@ -1088,6 +1092,50 @@ function toast(msg, type) {
     setTimeout(() => { el.className = 'toast'; el.style.transform = ''; el.style.opacity = ''; }, 260);
   }, 3200);
 }
+
+/**
+ * SLIDER_RANGES — single source of truth for all slider-able numeric params.
+ * Must be kept in sync with getFormValues().
+ * Excluded: checkboxes (use_clahe, circle_adaptive_thresh, cam_auto_exposure),
+ *           selects (point, camera_id, cam_resolution, detect_method),
+ *           text inputs (server_api_url, api_key).
+ */
+const SLIDER_RANGES = {
+    min_value: { min: -99999, max: 99999, step: 0.1 },
+    max_value: { min: -99999, max: 99999, step: 0.1 },
+    min_angle: { min: 0, max: 360, step: 1 },
+    max_angle: { min: 0, max: 360, step: 1 },
+    center_offset_y: { min: -200, max: 200, step: 1 },
+    inner_ratio: { min: 0.1, max: 0.95, step: 0.05 },
+    outer_ratio: { min: 0.15, max: 1.0, step: 0.05 },
+    blur_kernel: { min: 1, max: 31, step: 2 },
+    threshold_block: { min: 0, max: 99, step: 2 },
+    threshold_c: { min: 0, max: 20, step: 1 },
+    circle_hough_param1: { min: 50, max: 300, step: 5 },
+    circle_hough_param2: { min: 10, max: 150, step: 5 },
+    circle_hough_dp: { min: 0.5, max: 3.0, step: 0.1 },
+    circle_canny_low: { min: 10, max: 300, step: 5 },
+    circle_canny_high: { min: 20, max: 500, step: 5 },
+    circle_dilate: { min: 0, max: 10, step: 1 },
+    clahe_clip: { min: 0.5, max: 10.0, step: 0.5 },
+    clahe_tile: { min: 2, max: 16, step: 2 },
+    circle_clahe_clip: { min: 0.5, max: 10.0, step: 0.5 },
+    circle_min_circularity: { min: 0.1, max: 1.0, step: 0.05 },
+    circle_min_dist_ratio: { min: 0.1, max: 1.0, step: 0.05 },
+    circle_min_radius_ratio: { min: 0.01, max: 0.4, step: 0.05 },
+    circle_max_radius_ratio: { min: 0.1, max: 0.7, step: 0.05 },
+    filter_alpha: { min: 0.01, max: 0.95, step: 0.05 },
+    filter_max_jump: { min: 0.1, max: 10.0, step: 0.5 },
+    filter_window: { min: 1, max: 21, step: 2 },
+    center_ema: { min: 0.05, max: 0.95, step: 0.05 },
+    angle_kalman_R: { min: 0.01, max: 5.0, step: 0.05 },
+    angle_kalman_Q: { min: 0.001, max: 1.0, step: 0.005 },
+    interval_seconds: { min: 30, max: 86400, step: 30 },
+    cam_brightness: { min: -1, max: 255, step: 1 },
+    cam_contrast: { min: -1, max: 255, step: 1 },
+    cam_gain: { min: -1, max: 255, step: 1 },
+    cam_exposure_absolute: { min: -1, max: 10000, step: 10 },
+};
 
 // === Health ===
 async function checkHealth() {
@@ -1320,7 +1368,8 @@ async function pollOverlay() {
     const form = new FormData();
     form.append('image', blob, 'frame.jpg');
     ['min_angle','max_angle','min_value','max_value','center_offset_y',
-     'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c'].forEach(id => {
+     'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
+     'clahe_clip','clahe_tile'].forEach(id => {
       const el = q(id);
       if (el) form.append(id, el.value);
     });
@@ -1436,6 +1485,7 @@ async function startStreamDetection() {
    'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
    'filter_alpha','filter_max_jump','filter_window',
    'detect_method','center_ema','angle_kalman_R','angle_kalman_Q',
+   'clahe_clip','clahe_tile',
    'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
    'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
    'circle_canny_low','circle_canny_high','circle_dilate','circle_clahe_clip'].forEach(id => {
@@ -1467,6 +1517,7 @@ async function callOneShot() {
   const form = new FormData();
   ['min_angle','max_angle','min_value','max_value','center_offset_y',
    'inner_ratio','outer_ratio','blur_kernel','threshold_block','threshold_c',
+   'clahe_clip','clahe_tile',
    'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
    'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio'].forEach(id =>
     form.append(id, q(id).value));
@@ -1598,6 +1649,7 @@ function getFormValues() {
     'blur_kernel','threshold_block','threshold_c','interval_seconds',
     'filter_alpha','filter_max_jump','filter_window',
     'detect_method','use_clahe','center_ema','angle_kalman_R','angle_kalman_Q',
+    'clahe_clip','clahe_tile',
     'circle_hough_param1','circle_hough_param2','circle_hough_dp','circle_min_circularity',
     'circle_min_dist_ratio','circle_min_radius_ratio','circle_max_radius_ratio',
     'circle_adaptive_thresh', 'circle_canny_low', 'circle_canny_high', 'circle_dilate', 'circle_clahe_clip',

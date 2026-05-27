@@ -38,15 +38,22 @@ def subtract_background(gray, ref):
     return binary
 
 
-def preprocess(img, clahe=True, denoise=True):
+def preprocess(img, clahe=True, denoise=True, clahe_clip=2.0, clahe_tile=8):
     """Full preprocessing pipeline: BGR → LAB → CLAHE on L → merge back to BGR → bilateral.
 
     Preserves color channels (a, b) from LAB. Returns BGR image ready for center/needle detection.
+
+    Args:
+        img: BGR input image.
+        clahe: Whether to apply CLAHE.
+        denoise: Whether to apply bilateral filter.
+        clahe_clip: CLAHE clip limit (contrast enhancement threshold).
+        clahe_tile: CLAHE tile grid size (both dimensions).
     """
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     l_channel = lab[:, :, 0]
     if clahe:
-        l_channel = apply_clahe(l_channel)
+        l_channel = apply_clahe(l_channel, clip=clahe_clip, tile=clahe_tile)
     lab[:, :, 0] = l_channel
     result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
     if denoise:

@@ -67,6 +67,32 @@ def test_subtract_background_detects_change():
     assert binary[40:60, 40:60].sum() > 0
 
 
+def test_preprocess_defaults_backward_compat():
+    """preprocess() with no clahe_clip/tile args should use defaults (clip=2.0, tile=8)."""
+    img = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+    result = preprocess(img, clahe=True, denoise=True)
+    assert result.shape == img.shape
+    assert result.dtype == np.uint8
+
+
+def test_preprocess_different_clip_produces_different_output():
+    """Different clahe_clip values should produce measurably different results."""
+    img = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+    low = preprocess(img, clahe=True, denoise=False, clahe_clip=0.5, clahe_tile=8)
+    high = preprocess(img, clahe=True, denoise=False, clahe_clip=8.0, clahe_tile=8)
+    diff = np.abs(low.astype(float) - high.astype(float)).mean()
+    assert diff > 0.5, f"clip=0.5 vs clip=8.0 should differ, got mean diff={diff}"
+
+
+def test_preprocess_different_tile_produces_different_output():
+    """Different clahe_tile values should produce measurably different results."""
+    img = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
+    small_tile = preprocess(img, clahe=True, denoise=False, clahe_clip=2.0, clahe_tile=2)
+    large_tile = preprocess(img, clahe=True, denoise=False, clahe_clip=2.0, clahe_tile=16)
+    diff = np.abs(small_tile.astype(float) - large_tile.astype(float)).mean()
+    assert diff > 0.5, f"tile=2 vs tile=16 should differ, got mean diff={diff}"
+
+
 def test_preprocess_pipeline_returns_bgr():
     img = np.random.randint(0, 255, (200, 200, 3), dtype=np.uint8)
     result = preprocess(img, clahe=True, denoise=True)
